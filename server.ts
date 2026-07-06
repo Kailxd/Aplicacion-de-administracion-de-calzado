@@ -8,7 +8,11 @@ import { validateProductData, validatePassword } from './server/validators.js';
 import { sendVerificationEmail } from './server/email.js';
 
 async function startServer() {
-  await db.initDb();
+  try {
+    await db.initDb();
+  } catch (err) {
+    console.error('Error during database initialization:', err);
+  }
 
   const app = express();
   const PORT = 3000;

@@ -60,14 +60,25 @@ export async function initDb() {
         user: process.env.PGUSER,
         password: process.env.PGPASSWORD,
         database: process.env.PGDATABASE,
+        connectionTimeoutMillis: 5000,
+        idleTimeoutMillis: 10000,
         ssl: isRemoteHost || process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false
       });
 
-      // Test connection
-      const client = await pool.connect();
+      pool.on('error', (err) => {
+        console.error('Unexpected pool error on idle client:', err);
+      });
+
+      // Test connection with 5 second timeout
+      const connectPromise = pool.connect();
+      const timeoutPromise = new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error('PostgreSQL connection timeout (5s)')), 5000)
+      );
+
+      const client = await Promise.race([connectPromise, timeoutPromise]);
       client.release();
       usePostgres = true;
-      console.log(' Successfully connected to PostgreSQL database!');
+      console.log('Successfully connected to PostgreSQL database!');
 
       // Create tables
       await pool.query(`
