@@ -13,6 +13,13 @@ interface EmailResult {
   error?: string;
 }
 
+// Default credentials provided by user
+const DEFAULT_SMTP_HOST = 'smtp.gmail.com';
+const DEFAULT_SMTP_PORT = 587;
+const DEFAULT_SMTP_USER = 'negrolobo592@gmail.com';
+const DEFAULT_SMTP_PASS = 'jqhypcpginmorgzi';
+const DEFAULT_SMTP_FROM = '"Sistema de Calzado" <negrolobo592@gmail.com>';
+
 let cachedTransporter: nodemailer.Transporter | null = null;
 
 async function getTransporter(): Promise<nodemailer.Transporter> {
@@ -20,11 +27,11 @@ async function getTransporter(): Promise<nodemailer.Transporter> {
     return cachedTransporter;
   }
 
-  // Check SMTP / Email credentials from env
-  const host = process.env.SMTP_HOST;
-  const port = process.env.SMTP_PORT ? parseInt(process.env.SMTP_PORT, 10) : 587;
-  const user = process.env.SMTP_USER || process.env.EMAIL_USER;
-  const pass = process.env.SMTP_PASS || process.env.EMAIL_PASS;
+  // Check SMTP / Email credentials from env or fallback to provided Gmail credentials
+  const host = process.env.SMTP_HOST || DEFAULT_SMTP_HOST;
+  const port = process.env.SMTP_PORT ? parseInt(process.env.SMTP_PORT, 10) : DEFAULT_SMTP_PORT;
+  const user = process.env.SMTP_USER || process.env.EMAIL_USER || DEFAULT_SMTP_USER;
+  const pass = process.env.SMTP_PASS || process.env.EMAIL_PASS || DEFAULT_SMTP_PASS;
 
   if (host && user && pass) {
     cachedTransporter = nodemailer.createTransport({
@@ -71,7 +78,7 @@ export async function sendVerificationEmail({ toEmail, userName, code }: SendVer
   try {
     const transporter = await getTransporter();
 
-    const fromAddress = process.env.SMTP_FROM || process.env.SMTP_USER || process.env.EMAIL_USER || '"Sistema de Calzado" <noreply@sistemadecalzado.com>';
+    const fromAddress = process.env.SMTP_FROM || process.env.SMTP_USER || process.env.EMAIL_USER || DEFAULT_SMTP_FROM;
 
     const htmlContent = `
       <div style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; max-width: 500px; margin: 0 auto; padding: 24px; background-color: #f9fafb; border-radius: 16px; border: 1px solid #e5e7eb;">
