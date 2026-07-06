@@ -5,6 +5,7 @@ import multer from 'multer';
 import { createServer as createViteServer } from 'vite';
 import * as db from './server/db.js';
 import { validateProductData, validatePassword } from './server/validators.js';
+import { sendVerificationEmail } from './server/email.js';
 
 async function startServer() {
   await db.initDb();
@@ -136,6 +137,14 @@ async function startServer() {
       verificationCode
     };
     await db.createUser(newUser);
+
+    // Send verification email asynchronously
+    sendVerificationEmail({
+      toEmail: email,
+      userName: name,
+      code: verificationCode
+    }).catch(err => console.error('[EMAIL REGISTRATION ERROR]', err));
+
     res.status(201).json(newUser);
   });
 
@@ -155,12 +164,21 @@ async function startServer() {
     const verificationCode = Math.floor(100000 + Math.random() * 900000).toString();
     await db.updateUser(user.id, { verificationCode, isVerified: false });
 
-    console.log(`[VERIFICATION EMAIL] Código ${verificationCode} generado para ${user.email}`);
+    console.log(`[VERIFICATION EMAIL] Enviando código ${verificationCode} a ${user.email}`);
+
+    const emailResult = await sendVerificationEmail({
+      toEmail: user.email,
+      userName: user.name,
+      code: verificationCode
+    });
 
     res.json({
       success: true,
-      message: `Código de verificación enviado a ${user.email}`,
-      code: verificationCode // Returned so UI can display it in a notification/modal for testing
+      message: emailResult.success
+        ? `Código de verificación enviado a ${user.email}`
+        : `Código generado (${verificationCode}). Estado del correo: ${emailResult.error}`,
+      code: verificationCode,
+      previewUrl: emailResult.previewUrl
     });
   });
 

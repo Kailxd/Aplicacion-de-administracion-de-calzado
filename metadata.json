@@ -1,5 +1,5 @@
 {
-  "name": "Sistema de Distribución de Calzado",
+  "name": "Sistema de Calzado",
   "description": "Sistema de distribución de calzado para la gestión de almacén, catálogo de productos, marcas, categorías, colores, tallas e inventario.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
