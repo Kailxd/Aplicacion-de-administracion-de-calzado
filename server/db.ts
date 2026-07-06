@@ -12,8 +12,9 @@ import { Brand, Category, Color, Size, Product, StockItem, User } from '../src/t
 
 const { Pool } = pg;
 
-// Check if PostgreSQL configuration is provided
-const connectionString = process.env.DATABASE_URL || process.env.POSTGRES_URL;
+// Default Railway PostgreSQL URL provided
+const RAILWAY_DB_URL = 'postgresql://postgres:pOgFynVqLWraQUVQKndhyOzFryLjLHue@hayabusa.proxy.rlwy.net:18015/railway';
+const connectionString = process.env.DATABASE_URL || process.env.POSTGRES_URL || RAILWAY_DB_URL;
 
 let pool: pg.Pool | null = null;
 let usePostgres = false;
@@ -44,6 +45,14 @@ const memDb = new MemoryDatabase();
 export async function initDb() {
   if (connectionString || process.env.PGHOST) {
     try {
+      const isRemoteHost = connectionString && (
+        connectionString.includes('rlwy.net') ||
+        connectionString.includes('sslmode=require') ||
+        connectionString.includes('render.com') ||
+        connectionString.includes('supabase') ||
+        connectionString.includes('neon.tech')
+      );
+
       pool = new Pool({
         connectionString,
         host: process.env.PGHOST,
@@ -51,9 +60,7 @@ export async function initDb() {
         user: process.env.PGUSER,
         password: process.env.PGPASSWORD,
         database: process.env.PGDATABASE,
-        ssl: connectionString && connectionString.includes('sslmode=require')
-          ? { rejectUnauthorized: false }
-          : process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false
+        ssl: isRemoteHost || process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false
       });
 
       // Test connection
