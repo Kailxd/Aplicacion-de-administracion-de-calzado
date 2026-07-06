@@ -1,0 +1,483 @@
+import express from 'express';
+import path from 'path';
+import fs from 'fs';
+import multer from 'multer';
+import { createServer as createViteServer } from 'vite';
+import * as db from './server/db.js';
+import { validateProductData, validatePassword } from './server/validators.js';
+
+async function startServer() {
+  await db.initDb();
+
+  const app = express();
+  const PORT = 3000;
+
+  app.use(express.json({ limit: '10mb' }));
+  app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+
+  // Ensure uploads directory exists
+  const uploadsDir = path.join(process.cwd(), 'public', 'uploads');
+  if (!fs.existsSync(uploadsDir)) {
+    fs.mkdirSync(uploadsDir, { recursive: true });
+  }
+  app.use('/uploads', express.static(uploadsDir));
+
+  // Configure Multer for product image uploads (Max 5MB, JPG/JPEG/PNG only)
+  const storage = multer.diskStorage({
+    destination: (_req, _file, cb) => {
+      cb(null, uploadsDir);
+    },
+    filename: (_req, file, cb) => {
+      const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1e9);
+      const ext = path.extname(file.originalname).toLowerCase() || '.jpg';
+      cb(null, 'prod-' + uniqueSuffix + ext);
+    }
+  });
+
+  const upload = multer({
+    storage,
+    limits: { fileSize: 5 * 1024 * 1024 }, // 5 MB maximum limit
+    fileFilter: (_req, file, cb) => {
+      const allowedTypes = ['image/jpeg', 'image/jpg', 'image/png'];
+      if (allowedTypes.includes(file.mimetype)) {
+        cb(null, true);
+      } else {
+        cb(new Error('Solo se aceptan archivos en formato JPG, JPEG o PNG.'));
+      }
+    }
+  });
+
+  // --- API ROUTES ---
+
+  // Health check endpoint
+  app.get('/api/health', (_req, res) => {
+    res.json({ status: 'ok', timestamp: new Date().toISOString() });
+  });
+
+  // Image Upload Route
+  app.post('/api/upload', (req, res) => {
+    upload.single('image')(req, res, (err) => {
+      if (err instanceof multer.MulterError) {
+        if (err.code === 'LIMIT_FILE_SIZE') {
+          return res.status(400).json({ error: 'El tamaño de la imagen excede el límite máximo permitido de 5 MB.' });
+        }
+        return res.status(400).json({ error: err.message });
+      } else if (err) {
+        return res.status(400).json({ error: err.message });
+      }
+
+      if (!req.file) {
+        return res.status(400).json({ error: 'No se recibió ningún archivo de imagen.' });
+      }
+
+      const imageUrl = `/uploads/${req.file.filename}`;
+      res.json({ imageUrl });
+    });
+  });
+
+  // Auth / Login
+  app.post('/api/login', async (req, res) => {
+    const { username, password } = req.body;
+    if (!username || !password) {
+      return res.status(400).json({ error: 'Usuario y contraseña son requeridos.' });
+    }
+
+    const user = await db.getUserByUsername(username);
+    if (!user || user.password !== password) {
+      return res.status(401).json({ error: 'Credenciales inválidas. Por favor verifique su usuario y contraseña.' });
+    }
+
+    const { password: _, ...userWithoutPassword } = user;
+    res.json({ user: userWithoutPassword });
+  });
+
+  // Reset database
+  app.post('/api/reset', async (_req, res) => {
+    try {
+      await db.resetDatabase();
+      res.json({ message: 'Base de datos restablecida con éxito.' });
+    } catch (err) {
+      res.status(500).json({ error: 'Error al restablecer la base de datos.' });
+    }
+  });
+
+  // Users
+  app.get('/api/users', async (_req, res) => {
+    const users = await db.getUsers();
+    res.json(users);
+  });
+
+  app.post('/api/users', async (req, res) => {
+    const { username, name, role, email, password } = req.body;
+    if (!username || !name || !role || !email || !password) {
+      return res.status(400).json({ error: 'Todos los campos son obligatorios para crear un usuario.' });
+    }
+
+    const passError = validatePassword(password);
+    if (passError) {
+      return res.status(400).json({ error: passError });
+    }
+
+    const existing = await db.getUserByUsername(username);
+    if (existing) {
+      return res.status(400).json({ error: 'El nombre de usuario ya está en uso.' });
+    }
+
+    const verificationCode = Math.floor(100000 + Math.random() * 900000).toString();
+
+    const newUser = {
+      id: `u-${Date.now()}`,
+      username,
+      name,
+      role,
+      email,
+      password,
+      isVerified: false,
+      verificationCode
+    };
+    await db.createUser(newUser);
+    res.status(201).json(newUser);
+  });
+
+  app.post('/api/users/send-code', async (req, res) => {
+    const { userId, email } = req.body;
+    if (!userId && !email) {
+      return res.status(400).json({ error: 'Se requiere ID de usuario o correo electrónico.' });
+    }
+
+    const users = await db.getUsers();
+    const user = users.find(u => u.id === userId || u.email.toLowerCase() === (email || '').toLowerCase());
+
+    if (!user) {
+      return res.status(404).json({ error: 'Usuario no encontrado con el correo especificado.' });
+    }
+
+    const verificationCode = Math.floor(100000 + Math.random() * 900000).toString();
+    await db.updateUser(user.id, { verificationCode, isVerified: false });
+
+    console.log(`[VERIFICATION EMAIL] Código ${verificationCode} generado para ${user.email}`);
+
+    res.json({
+      success: true,
+      message: `Código de verificación enviado a ${user.email}`,
+      code: verificationCode // Returned so UI can display it in a notification/modal for testing
+    });
+  });
+
+  app.post('/api/users/verify-code', async (req, res) => {
+    const { userId, email, code } = req.body;
+    if (!code || (!userId && !email)) {
+      return res.status(400).json({ error: 'El código de verificación y el usuario/correo son obligatorios.' });
+    }
+
+    const users = await db.getUsers();
+    const user = users.find(u => u.id === userId || u.email.toLowerCase() === (email || '').toLowerCase());
+
+    if (!user) {
+      return res.status(404).json({ error: 'Usuario no encontrado.' });
+    }
+
+    if (user.verificationCode !== code.trim()) {
+      return res.status(400).json({ error: 'El código de verificación ingresado es incorrecto o ha caducado.' });
+    }
+
+    const updated = await db.updateUser(user.id, {
+      isVerified: true,
+      verificationCode: undefined
+    });
+
+    res.json({
+      success: true,
+      message: '¡Correo verificado exitosamente!',
+      user: updated
+    });
+  });
+
+  app.put('/api/users/:id', async (req, res) => {
+    if (req.body.password && req.body.password.trim()) {
+      const passError = validatePassword(req.body.password.trim());
+      if (passError) {
+        return res.status(400).json({ error: passError });
+      }
+    }
+    const updated = await db.updateUser(req.params.id, req.body);
+    if (!updated) {
+      return res.status(404).json({ error: 'Usuario no encontrado.' });
+    }
+    res.json(updated);
+  });
+
+  app.delete('/api/users/:id', async (req, res) => {
+    const deleted = await db.deleteUser(req.params.id);
+    if (!deleted) {
+      return res.status(404).json({ error: 'Usuario no encontrado.' });
+    }
+    res.json({ success: true });
+  });
+
+  // Brands
+  app.get('/api/brands', async (_req, res) => {
+    const brands = await db.getBrands();
+    res.json(brands);
+  });
+
+  app.post('/api/brands', async (req, res) => {
+    const { name, description, status } = req.body;
+    if (!name || !description) {
+      return res.status(400).json({ error: 'Nombre y descripción son requeridos.' });
+    }
+    const newBrand = {
+      id: `b-${Date.now()}`,
+      name: name.trim(),
+      description: description.trim(),
+      status: status || 'Activo'
+    };
+    await db.createBrand(newBrand);
+    res.status(201).json(newBrand);
+  });
+
+  app.put('/api/brands/:id', async (req, res) => {
+    const updated = await db.updateBrand(req.params.id, req.body);
+    if (!updated) {
+      return res.status(404).json({ error: 'Marca no encontrada.' });
+    }
+    res.json(updated);
+  });
+
+  app.delete('/api/brands/:id', async (req, res) => {
+    const deleted = await db.deleteBrand(req.params.id);
+    if (!deleted) {
+      return res.status(404).json({ error: 'Marca no encontrada.' });
+    }
+    res.json({ success: true });
+  });
+
+  // Categories
+  app.get('/api/categories', async (_req, res) => {
+    const categories = await db.getCategories();
+    res.json(categories);
+  });
+
+  app.post('/api/categories', async (req, res) => {
+    const { name, description } = req.body;
+    if (!name || !description) {
+      return res.status(400).json({ error: 'Nombre y descripción son requeridos.' });
+    }
+    const newCat = {
+      id: `c-${Date.now()}`,
+      name: name.trim(),
+      description: description.trim()
+    };
+    await db.createCategory(newCat);
+    res.status(201).json(newCat);
+  });
+
+  app.put('/api/categories/:id', async (req, res) => {
+    const updated = await db.updateCategory(req.params.id, req.body);
+    if (!updated) {
+      return res.status(404).json({ error: 'Categoría no encontrada.' });
+    }
+    res.json(updated);
+  });
+
+  app.delete('/api/categories/:id', async (req, res) => {
+    const deleted = await db.deleteCategory(req.params.id);
+    if (!deleted) {
+      return res.status(404).json({ error: 'Categoría no encontrada.' });
+    }
+    res.json({ success: true });
+  });
+
+  // Colors
+  app.get('/api/colors', async (_req, res) => {
+    const colors = await db.getColors();
+    res.json(colors);
+  });
+
+  app.post('/api/colors', async (req, res) => {
+    const { name, hex } = req.body;
+    if (!name || !hex) {
+      return res.status(400).json({ error: 'Nombre y código Hexadecimal son requeridos.' });
+    }
+    const newColor = {
+      id: `col-${Date.now()}`,
+      name: name.trim(),
+      hex: hex.trim()
+    };
+    await db.createColor(newColor);
+    res.status(201).json(newColor);
+  });
+
+  app.put('/api/colors/:id', async (req, res) => {
+    const updated = await db.updateColor(req.params.id, req.body);
+    if (!updated) {
+      return res.status(404).json({ error: 'Color no encontrado.' });
+    }
+    res.json(updated);
+  });
+
+  app.delete('/api/colors/:id', async (req, res) => {
+    const deleted = await db.deleteColor(req.params.id);
+    if (!deleted) {
+      return res.status(404).json({ error: 'Color no encontrado.' });
+    }
+    res.json({ success: true });
+  });
+
+  // Sizes
+  app.get('/api/sizes', async (_req, res) => {
+    const sizes = await db.getSizes();
+    res.json(sizes);
+  });
+
+  app.post('/api/sizes', async (req, res) => {
+    const { value, gender } = req.body;
+    if (value === undefined || !gender) {
+      return res.status(400).json({ error: 'Valor numérico de talla y género son requeridos.' });
+    }
+    const newSize = {
+      id: `s-${value}-${gender.toLowerCase()}`,
+      value: Number(value),
+      gender
+    };
+    await db.createSize(newSize);
+    res.status(201).json(newSize);
+  });
+
+  app.delete('/api/sizes/:id', async (req, res) => {
+    const deleted = await db.deleteSize(req.params.id);
+    if (!deleted) {
+      return res.status(404).json({ error: 'Talla no encontrada.' });
+    }
+    res.json({ success: true });
+  });
+
+  // Products (With QA rules validation)
+  app.get('/api/products', async (_req, res) => {
+    const products = await db.getProducts();
+    res.json(products);
+  });
+
+  app.post('/api/products', async (req, res) => {
+    const validationErrors = await validateProductData(req.body);
+    if (validationErrors.length > 0) {
+      return res.status(400).json({ errors: validationErrors, error: validationErrors[0].message });
+    }
+
+    const newProduct = {
+      id: `p-${Date.now()}`,
+      code: req.body.code.trim(),
+      gender: req.body.gender,
+      categoryId: req.body.categoryId,
+      brandId: req.body.brandId,
+      name: req.body.name.trim(),
+      colors: req.body.colors,
+      sizes: req.body.sizes.map(Number),
+      description: req.body.description.trim(),
+      price: Number(req.body.price),
+      imageUrl: req.body.imageUrl.trim()
+    };
+
+    await db.createProduct(newProduct);
+    res.status(201).json(newProduct);
+  });
+
+  app.put('/api/products/:id', async (req, res) => {
+    const id = req.params.id;
+    const existing = await db.getProductById(id);
+    if (!existing) {
+      return res.status(404).json({ error: 'Producto no encontrado.' });
+    }
+
+    const validationErrors = await validateProductData(req.body, id);
+    if (validationErrors.length > 0) {
+      return res.status(400).json({ errors: validationErrors, error: validationErrors[0].message });
+    }
+
+    const updated = await db.updateProduct(id, {
+      code: req.body.code.trim(),
+      gender: req.body.gender,
+      categoryId: req.body.categoryId,
+      brandId: req.body.brandId,
+      name: req.body.name.trim(),
+      colors: req.body.colors,
+      sizes: req.body.sizes.map(Number),
+      description: req.body.description.trim(),
+      price: Number(req.body.price),
+      imageUrl: req.body.imageUrl.trim()
+    });
+
+    res.json(updated);
+  });
+
+  app.delete('/api/products/:id', async (req, res) => {
+    const deleted = await db.deleteProduct(req.params.id);
+    if (!deleted) {
+      return res.status(404).json({ error: 'Producto no encontrado.' });
+    }
+    res.json({ success: true });
+  });
+
+  // Stock / Warehouse
+  app.get('/api/stock', async (_req, res) => {
+    const stockItems = await db.getStock();
+    res.json(stockItems);
+  });
+
+  app.post('/api/stock', async (req, res) => {
+    const { productId, colorId, sizeValue, quantity, stockMin, stockMax } = req.body;
+    if (!productId || !colorId || sizeValue === undefined) {
+      return res.status(400).json({ error: 'Producto, color y talla son requeridos.' });
+    }
+
+    const newStock = {
+      id: `st-${Date.now()}`,
+      productId,
+      colorId,
+      sizeValue: Number(sizeValue),
+      quantity: Number(quantity || 0),
+      stockMin: Number(stockMin || 5),
+      stockMax: Number(stockMax || 100)
+    };
+
+    await db.createStock(newStock);
+    res.status(201).json(newStock);
+  });
+
+  app.put('/api/stock/:id', async (req, res) => {
+    const updated = await db.updateStock(req.params.id, req.body);
+    if (!updated) {
+      return res.status(404).json({ error: 'Registro de existencias no encontrado.' });
+    }
+    res.json(updated);
+  });
+
+  app.delete('/api/stock/:id', async (req, res) => {
+    const deleted = await db.deleteStock(req.params.id);
+    if (!deleted) {
+      return res.status(404).json({ error: 'Registro de existencias no encontrado.' });
+    }
+    res.json({ success: true });
+  });
+
+  // Vite middleware for development or Static files for production
+  if (process.env.NODE_ENV !== 'production') {
+    const vite = await createViteServer({
+      server: { middlewareMode: true },
+      appType: 'spa'
+    });
+    app.use(vite.middlewares);
+  } else {
+    const distPath = path.join(process.cwd(), 'dist');
+    app.use(express.static(distPath));
+    app.get('*', (_req, res) => {
+      res.sendFile(path.join(distPath, 'index.html'));
+    });
+  }
+
+  app.listen(PORT, '0.0.0.0', () => {
+    console.log(`🚀 Server running on http://0.0.0.0:${PORT}`);
+  });
+}
+
+startServer();
