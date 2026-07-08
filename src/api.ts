@@ -181,9 +181,18 @@ export const api = {
     return handleResponse<Size[]>(res);
   },
 
-  createSize: async (value: number, gender: 'Dama' | 'Caballero' | 'Unisex'): Promise<Size> => {
+  createSize: async (value: number, gender: 'Dama' | 'Caballero'): Promise<Size> => {
     const res = await fetch('/api/sizes', {
       method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ value, gender })
+    });
+    return handleResponse<Size>(res);
+  },
+
+  updateSize: async (id: string, value: number, gender: 'Dama' | 'Caballero'): Promise<Size> => {
+    const res = await fetch(`/api/sizes/${id}`, {
+      method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ value, gender })
     });

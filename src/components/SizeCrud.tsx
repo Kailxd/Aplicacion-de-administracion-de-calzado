@@ -5,28 +5,40 @@
 
 import React, { useState } from 'react';
 import { Size, Role } from '../types';
-import { Search, Plus, Trash2, X, AlertTriangle, CheckCircle2 } from 'lucide-react';
+import { Search, Plus, Edit2, Trash2, X, AlertTriangle, CheckCircle2, SlidersHorizontal } from 'lucide-react';
 
 interface SizeCrudProps {
   sizes: Size[];
-  onAddSize: (value: number, gender: 'Dama' | 'Caballero' | 'Unisex') => void;
+  onAddSize: (value: number, gender: 'Dama' | 'Caballero') => void;
+  onEditSize: (id: string, value: number, gender: 'Dama' | 'Caballero') => void;
   onDeleteSize: (id: string) => void;
   userRole: Role;
 }
 
-export default function SizeCrud({ sizes, onAddSize, onDeleteSize, userRole }: SizeCrudProps) {
+export default function SizeCrud({ sizes, onAddSize, onEditSize, onDeleteSize, userRole }: SizeCrudProps) {
   const [searchTerm, setSearchTerm] = useState('');
+  const [activeGenderTab, setActiveGenderTab] = useState<'Dama' | 'Caballero'>('Dama');
+  
+  // Modal state
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [editingSize, setEditingSize] = useState<Size | null>(null);
+  
+  // Form values
   const [sizeValueInput, setSizeValueInput] = useState('');
-  const [sizeGenderInput, setSizeGenderInput] = useState<'Dama' | 'Caballero' | 'Unisex'>('Dama');
+  const [sizeGenderInput, setSizeGenderInput] = useState<'Dama' | 'Caballero'>('Dama');
+  
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
 
   const isReadOnly = userRole === 'Empleado';
 
-  // Filter sizes based on search term
+  // Filter sizes based on active gender tab AND search term
   const filteredSizes = sizes
-    .filter((s) => s.value.toString().includes(searchTerm) || (s.gender && s.gender.toLowerCase().includes(searchTerm.toLowerCase())))
+    .filter((s) => {
+      const matchesGender = s.gender === activeGenderTab;
+      const matchesSearch = s.value.toString().includes(searchTerm);
+      return matchesGender && matchesSearch;
+    })
     .sort((a, b) => a.value - b.value);
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -46,28 +58,54 @@ export default function SizeCrud({ sizes, onAddSize, onDeleteSize, userRole }: S
     }
 
     // Must be either an integer or half size (ends in .5)
-    if (val * 2 % 1 !== 0) {
+    if ((val * 2) % 1 !== 0) {
       setError('Solo se permiten tallas enteras o medias tallas (ej. 24 o 24.5).');
       return;
     }
 
-    const exists = sizes.some((s) => s.value === val && s.gender === sizeGenderInput);
+    // Check uniqueness (ignoring the one being edited, if any)
+    const exists = sizes.some(
+      (s) => s.value === val && s.gender === sizeGenderInput && (!editingSize || s.id !== editingSize.id)
+    );
     if (exists) {
       setError(`La talla ${val} para ${sizeGenderInput} ya se encuentra registrada.`);
       return;
     }
 
-    onAddSize(val, sizeGenderInput);
-    setSuccess(`Talla ${val} (${sizeGenderInput}) agregada con éxito.`);
-    setSizeValueInput('');
-    setSizeGenderInput('Dama');
+    if (editingSize) {
+      // Modify size flow
+      onEditSize(editingSize.id, val, sizeGenderInput);
+      setSuccess(`Talla ${val} (${sizeGenderInput}) modificada con éxito.`);
+    } else {
+      // Add size flow
+      onAddSize(val, sizeGenderInput);
+      setSuccess(`Talla ${val} (${sizeGenderInput}) agregada con éxito.`);
+    }
+
     setIsModalOpen(false);
+    resetForm();
 
     setTimeout(() => setSuccess(''), 3000);
   };
 
-  const handleDelete = (id: string, value: number) => {
-    if (window.confirm(`¿Estás seguro de eliminar la talla ${value}?`)) {
+  const resetForm = () => {
+    setEditingSize(null);
+    setSizeValueInput('');
+    setSizeGenderInput(activeGenderTab);
+    setError('');
+  };
+
+  const handleEdit = (size: Size) => {
+    if (isReadOnly) return;
+    setEditingSize(size);
+    setSizeValueInput(size.value.toString());
+    setSizeGenderInput(size.gender);
+    setError('');
+    setIsModalOpen(true);
+  };
+
+  const handleDelete = (id: string, value: number, gender: string) => {
+    if (window.confirm(`¿Estás seguro de eliminar la talla ${value} para ${gender}?`)) {
       onDeleteSize(id);
       setSuccess(`Talla ${value} eliminada con éxito.`);
       setTimeout(() => setSuccess(''), 3000);
@@ -76,8 +114,7 @@ export default function SizeCrud({ sizes, onAddSize, onDeleteSize, userRole }: S
 
   const openAddModal = () => {
     if (isReadOnly) return;
-    setSizeValueInput('');
-    setError('');
+    resetForm();
     setIsModalOpen(true);
   };
 
@@ -93,7 +130,7 @@ export default function SizeCrud({ sizes, onAddSize, onDeleteSize, userRole }: S
           <button
             id="add-size-btn"
             onClick={openAddModal}
-            className="flex items-center justify-center gap-2 py-2 px-4 rounded-xl text-xs font-semibold text-white bg-neutral-900 hover:bg-neutral-800 transition-all self-start sm:self-auto active:scale-95"
+            className="flex items-center justify-center gap-2 py-2 px-4 rounded-xl text-xs font-semibold text-white bg-neutral-900 hover:bg-neutral-800 transition-all self-start sm:self-auto active:scale-95 cursor-pointer"
           >
             <Plus className="w-4 h-4" />
             <span>Nueva Talla</span>
@@ -102,13 +139,51 @@ export default function SizeCrud({ sizes, onAddSize, onDeleteSize, userRole }: S
       </div>
 
       {success && (
-        <div className="mb-4 p-3 bg-emerald-50 border border-emerald-100 text-emerald-800 text-xs rounded-xl flex items-center gap-2" id="size-success-banner">
+        <div className="mb-4 p-3 bg-emerald-50 border border-emerald-100 text-emerald-800 text-xs rounded-xl flex items-center gap-2 animate-fade-in" id="size-success-banner">
           <CheckCircle2 className="w-4 h-4 text-emerald-600" />
           <span>{success}</span>
         </div>
       )}
 
-      {/* SEARCH AND INFO BAR */}
+      {/* GENDER TABS (Hombre / Mujer Selection) */}
+      <div className="flex border-b border-stone-100 mb-6" id="size-gender-tabs">
+        <button
+          id="size-tab-dama"
+          onClick={() => {
+            setActiveGenderTab('Dama');
+            setSizeGenderInput('Dama');
+          }}
+          className={`pb-3.5 px-6 text-sm font-semibold transition-all border-b-2 -mb-[2px] flex items-center gap-2 ${
+            activeGenderTab === 'Dama'
+              ? 'border-amber-500 text-stone-900 font-bold'
+              : 'border-transparent text-stone-400 hover:text-stone-700'
+          }`}
+        >
+          <span>Dama (Mujer)</span>
+          <span className="text-[10px] bg-stone-150 text-stone-600 px-2 py-0.5 rounded-full font-mono font-medium">
+            {sizes.filter((s) => s.gender === 'Dama').length}
+          </span>
+        </button>
+        <button
+          id="size-tab-caballero"
+          onClick={() => {
+            setActiveGenderTab('Caballero');
+            setSizeGenderInput('Caballero');
+          }}
+          className={`pb-3.5 px-6 text-sm font-semibold transition-all border-b-2 -mb-[2px] flex items-center gap-2 ${
+            activeGenderTab === 'Caballero'
+              ? 'border-amber-500 text-stone-900 font-bold'
+              : 'border-transparent text-stone-400 hover:text-stone-700'
+          }`}
+        >
+          <span>Caballero (Hombre)</span>
+          <span className="text-[10px] bg-stone-150 text-stone-600 px-2 py-0.5 rounded-full font-mono font-medium">
+            {sizes.filter((s) => s.gender === 'Caballero').length}
+          </span>
+        </button>
+      </div>
+
+      {/* SEARCH BAR */}
       <div className="flex flex-col sm:flex-row gap-3 mb-6" id="size-search-bar-container">
         <div className="relative flex-1">
           <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
@@ -117,78 +192,72 @@ export default function SizeCrud({ sizes, onAddSize, onDeleteSize, userRole }: S
           <input
             id="size-search-input"
             type="text"
-            placeholder="Buscar tallas (ej. 24, 25.5)..."
+            placeholder={`Buscar tallas registradas para ${activeGenderTab === 'Dama' ? 'Dama' : 'Caballero'}...`}
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
             className="block w-full pl-9 pr-3 py-2 border border-stone-200 rounded-xl text-xs bg-stone-50/50 placeholder-stone-400 focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 transition-all"
           />
         </div>
-        <div className="flex items-center text-stone-400 text-[11px] font-mono px-1">
-          Total de tallas: {sizes.length}
-        </div>
       </div>
 
-      {/* GRID LAYOUT FOR SIZES (Since they are just numbers, a table is less efficient than a grid of chip cards) */}
+      {/* GRID LAYOUT FOR FILTERED SIZES */}
       <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8 gap-3" id="sizes-chips-grid">
         {filteredSizes.length === 0 ? (
           <div className="col-span-full py-8 text-center text-stone-400 font-mono text-xs border border-stone-100 rounded-xl">
-            No se encontraron tallas registradas.
+            No se encontraron tallas de {activeGenderTab === 'Dama' ? 'Dama' : 'Caballero'} que coincidan.
           </div>
         ) : (
-          filteredSizes.map((size) => {
-            const badgeType = size.gender || 'Unisex';
-            let badgeClass = '';
-            if (badgeType === 'Dama') {
-              badgeClass = 'bg-amber-50 text-amber-800 border-amber-200/60';
-            } else if (badgeType === 'Caballero') {
-              badgeClass = 'bg-stone-100 text-stone-850 border-stone-300';
-            } else {
-              badgeClass = 'bg-stone-50/70 text-stone-600 border-stone-200';
-            }
-
-            return (
-              <div
-                key={size.id}
-                id={`size-chip-${size.id}`}
-                className="p-3.5 border border-stone-100 rounded-xl hover:border-amber-500/30 bg-stone-50/20 flex flex-col justify-between items-center relative group hover:shadow-xs transition-all"
-              >
-                <div className="text-center w-full">
-                  <span className="text-[10px] font-mono text-stone-400 block mb-1">ID: {size.id}</span>
-                  <div className="bg-stone-100 rounded-lg py-1.5 px-3">
-                    <span className="text-sm text-stone-500 block text-[9px] font-bold uppercase tracking-wider">Talla</span>
-                    <span className="text-lg font-mono font-black text-stone-900">{size.value}</span>
-                  </div>
-                  <div className="mt-1.5">
-                    <span className={`inline-block text-[9px] font-bold px-2.5 py-0.5 rounded-full border ${badgeClass}`}>
-                      {badgeType}
-                    </span>
-                  </div>
+          filteredSizes.map((size) => (
+            <div
+              key={size.id}
+              id={`size-chip-${size.id}`}
+              className="p-3.5 border border-stone-100 rounded-xl hover:border-amber-500/30 bg-stone-50/20 flex flex-col justify-between items-center relative group hover:shadow-xs transition-all"
+            >
+              <div className="text-center w-full">
+                <span className="text-[9px] font-mono text-stone-400 block mb-1">ID: {size.id}</span>
+                <div className="bg-stone-50 rounded-lg py-2 px-3 border border-stone-100 shadow-3xs">
+                  <span className="text-stone-400 block text-[9px] font-bold uppercase tracking-wider">Talla</span>
+                  <span className="text-lg font-mono font-black text-stone-900">{size.value}</span>
                 </div>
-
-                <button
-                  id={`delete-size-${size.id}`}
-                  onClick={() => handleDelete(size.id, size.value)}
-                  className="absolute top-1 right-1 p-1 rounded-md text-stone-400 hover:text-rose-600 hover:bg-rose-50 opacity-0 group-hover:opacity-100 transition-opacity"
-                  title="Eliminar Talla"
-                >
-                  <X className="w-3 h-3" />
-                </button>
               </div>
-            );
-          })
+
+              {!isReadOnly && (
+                <div className="flex gap-1.5 mt-3 justify-center w-full opacity-0 group-hover:opacity-100 transition-opacity">
+                  <button
+                    id={`edit-size-${size.id}`}
+                    onClick={() => handleEdit(size)}
+                    className="p-1 rounded bg-white border border-stone-200 hover:border-amber-500 hover:text-amber-600 text-stone-500 hover:shadow-2xs transition-all cursor-pointer"
+                    title="Editar Talla"
+                  >
+                    <Edit2 className="w-3.5 h-3.5" />
+                  </button>
+                  <button
+                    id={`delete-size-${size.id}`}
+                    onClick={() => handleDelete(size.id, size.value, size.gender)}
+                    className="p-1 rounded bg-white border border-stone-200 hover:border-rose-500 hover:text-rose-600 text-stone-500 hover:shadow-2xs transition-all cursor-pointer"
+                    title="Eliminar Talla"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              )}
+            </div>
+          ))
         )}
       </div>
 
-      {/* FORM MODAL */}
+      {/* FORM MODAL (Add / Edit Talla) */}
       {isModalOpen && (
         <div className="fixed inset-0 bg-black/40 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-fade-in" id="size-form-modal">
           <div className="bg-white rounded-2xl max-w-sm w-full p-6 shadow-xl border border-stone-100 flex flex-col gap-4 animate-scale-up">
             <div className="flex justify-between items-center" id="size-modal-header">
-              <h3 className="text-base font-display font-bold text-stone-900">Agregar Nueva Talla</h3>
+              <h3 className="text-base font-display font-bold text-stone-900">
+                {editingSize ? 'Modificar Talla Existente' : 'Agregar Nueva Talla'}
+              </h3>
               <button
                 id="close-size-modal"
                 onClick={() => setIsModalOpen(false)}
-                className="text-stone-400 hover:text-stone-600 p-1 rounded-lg hover:bg-stone-50 transition-all"
+                className="text-stone-400 hover:text-stone-600 p-1 rounded-lg hover:bg-stone-50 transition-all cursor-pointer"
               >
                 <X className="w-4 h-4" />
               </button>
@@ -202,6 +271,21 @@ export default function SizeCrud({ sizes, onAddSize, onDeleteSize, userRole }: S
             )}
 
             <form onSubmit={handleSubmit} className="space-y-4" id="size-form">
+              <div>
+                <label className="block text-[11px] font-semibold text-stone-700 uppercase tracking-wider mb-1.5">
+                  Género / Tipo de Talla
+                </label>
+                <select
+                  id="size-gender-input"
+                  value={sizeGenderInput}
+                  onChange={(e) => setSizeGenderInput(e.target.value as 'Dama' | 'Caballero')}
+                  className="block w-full px-3 py-2 border border-stone-200 rounded-xl text-xs bg-white text-stone-800 focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 transition-all"
+                >
+                  <option value="Dama">Dama (Mujer)</option>
+                  <option value="Caballero">Caballero (Hombre)</option>
+                </select>
+              </div>
+
               <div>
                 <label className="block text-[11px] font-semibold text-stone-700 uppercase tracking-wider mb-1.5">
                   Valor de Talla (Número en cm)
@@ -221,37 +305,21 @@ export default function SizeCrud({ sizes, onAddSize, onDeleteSize, userRole }: S
                 </span>
               </div>
 
-              <div>
-                <label className="block text-[11px] font-semibold text-stone-700 uppercase tracking-wider mb-1.5">
-                  Género / Tipo de Talla
-                </label>
-                <select
-                  id="size-gender-input"
-                  value={sizeGenderInput}
-                  onChange={(e) => setSizeGenderInput(e.target.value as 'Dama' | 'Caballero' | 'Unisex')}
-                  className="block w-full px-3 py-2 border border-stone-200 rounded-xl text-xs bg-white text-stone-800 focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 transition-all"
-                >
-                  <option value="Dama">Dama</option>
-                  <option value="Caballero">Caballero</option>
-                  <option value="Unisex">Unisex</option>
-                </select>
-              </div>
-
               <div className="flex justify-end gap-2 pt-2" id="size-modal-footer">
                 <button
                   id="cancel-size-form"
                   type="button"
                   onClick={() => setIsModalOpen(false)}
-                  className="px-4 py-2 border border-stone-200 rounded-xl text-xs font-semibold text-stone-500 hover:bg-stone-50 transition-all"
+                  className="px-4 py-2 border border-stone-200 rounded-xl text-xs font-semibold text-stone-500 hover:bg-stone-50 transition-all cursor-pointer"
                 >
                   Cancelar
                 </button>
                 <button
                   id="submit-size-form"
                   type="submit"
-                  className="px-4 py-2 bg-neutral-900 hover:bg-neutral-800 text-white rounded-xl text-xs font-semibold transition-all active:scale-95"
+                  className="px-4 py-2 bg-neutral-900 hover:bg-neutral-800 text-white rounded-xl text-xs font-semibold transition-all active:scale-95 cursor-pointer"
                 >
-                  Guardar Talla
+                  {editingSize ? 'Guardar Cambios' : 'Registrar Talla'}
                 </button>
               </div>
             </form>

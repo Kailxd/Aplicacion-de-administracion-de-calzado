@@ -39,7 +39,7 @@ export interface Color {
 export interface Size {
   id: string;
   value: number; // e.g. 22, 22.5, 23...
-  gender: 'Dama' | 'Caballero' | 'Unisex';
+  gender: 'Dama' | 'Caballero';
 }
 
 export interface Product {

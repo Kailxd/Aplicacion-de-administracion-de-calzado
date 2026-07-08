@@ -321,8 +321,18 @@ async function startServer() {
     if (!name || !hex) {
       return res.status(400).json({ error: 'Nombre y código Hexadecimal son requeridos.' });
     }
+    const colors = await db.getColors();
+    let maxId = 0;
+    colors.forEach(col => {
+      const match = col.id.match(/^col-(\d+)$/i);
+      if (match) {
+        const val = parseInt(match[1]);
+        if (val > maxId) maxId = val;
+      }
+    });
+    const nextId = `col-${(maxId + 1).toString().padStart(2, '0')}`;
     const newColor = {
-      id: `col-${Date.now()}`,
+      id: nextId,
       name: name.trim(),
       hex: hex.trim()
     };
@@ -357,13 +367,31 @@ async function startServer() {
     if (value === undefined || !gender) {
       return res.status(400).json({ error: 'Valor numérico de talla y género son requeridos.' });
     }
+    if (gender !== 'Dama' && gender !== 'Caballero') {
+      return res.status(400).json({ error: 'El género de la talla debe ser Dama o Caballero.' });
+    }
     const newSize = {
       id: `s-${value}-${gender.toLowerCase()}`,
       value: Number(value),
-      gender
+      gender: gender as 'Dama' | 'Caballero'
     };
     await db.createSize(newSize);
     res.status(201).json(newSize);
+  });
+
+  app.put('/api/sizes/:id', async (req, res) => {
+    const { value, gender } = req.body;
+    if (value === undefined || !gender) {
+      return res.status(400).json({ error: 'Valor numérico de talla y género son requeridos.' });
+    }
+    if (gender !== 'Dama' && gender !== 'Caballero') {
+      return res.status(400).json({ error: 'El género de la talla debe ser Dama o Caballero.' });
+    }
+    const updated = await db.updateSize(req.params.id, { value: Number(value), gender: gender as 'Dama' | 'Caballero' });
+    if (!updated) {
+      return res.status(404).json({ error: 'Talla no encontrada.' });
+    }
+    res.json(updated);
   });
 
   app.delete('/api/sizes/:id', async (req, res) => {

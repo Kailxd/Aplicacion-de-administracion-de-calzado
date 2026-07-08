@@ -15,7 +15,7 @@ export default function Footer() {
           <span className="font-mono">v1.2.0</span>
         </div>
         <div className="font-mono text-stone-400" id="footer-credits">
-          BigHunters © 2026
+          BugHunters © 2026
         </div>
       </div>
     </footer>

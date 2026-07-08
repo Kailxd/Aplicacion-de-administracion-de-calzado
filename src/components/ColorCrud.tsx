@@ -49,25 +49,35 @@ export default function ColorCrud({ colors, onAddColor, onEditColor, onDeleteCol
       setError('El nombre del color no puede tener más de 10 caracteres.');
       return;
     }
-    if (!colorHex.trim()) {
+    
+    const cleanColorHex = colorHex.trim();
+    if (!cleanColorHex) {
       setError('El código hexadecimal es obligatorio.');
       return;
     }
 
+    if (editingColor) {
+      const isUnchanged = cleanColorName.toLowerCase() === editingColor.name.toLowerCase() && cleanColorHex.toLowerCase() === editingColor.hex.toLowerCase();
+      if (isUnchanged) {
+        setError('Debes modificar el nombre o el color hexadecimal antes de guardar.');
+        return;
+      }
+    }
+
     const exists = colors.some(
-      (c) => c.name.toLowerCase() === colorName.trim().toLowerCase() && (!editingColor || c.id !== editingColor.id)
+      (c) => c.name.toLowerCase() === cleanColorName.toLowerCase() && (!editingColor || c.id !== editingColor.id)
     );
 
     if (exists) {
-      setError('Este color ya se encuentra registrado.');
+      setError('Este color ya se encuentra registrado con ese nombre.');
       return;
     }
 
     if (editingColor) {
-      onEditColor(editingColor.id, colorName.trim(), colorHex.trim());
+      onEditColor(editingColor.id, cleanColorName, cleanColorHex);
       setSuccess('Color actualizado con éxito.');
     } else {
-      onAddColor(colorName.trim(), colorHex.trim());
+      onAddColor(cleanColorName, cleanColorHex);
       setSuccess('Color agregado con éxito.');
     }
 

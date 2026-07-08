@@ -80,7 +80,7 @@ export default function App() {
   useEffect(() => {
     refreshAllData();
 
-    const localCurrentUser = localStorage.getItem('sdc_current_user');
+    const localCurrentUser = sessionStorage.getItem('sdc_current_user');
     if (localCurrentUser) {
       try {
         const parsedUser = JSON.parse(localCurrentUser);
@@ -91,7 +91,7 @@ export default function App() {
           setCurrentView('almacen');
         }
       } catch (e) {
-        localStorage.removeItem('sdc_current_user');
+        sessionStorage.removeItem('sdc_current_user');
       }
     }
   }, []);
@@ -113,7 +113,7 @@ export default function App() {
   // Session handling
   const handleLoginSuccess = (user: User) => {
     setCurrentUser(user);
-    localStorage.setItem('sdc_current_user', JSON.stringify(user));
+    sessionStorage.setItem('sdc_current_user', JSON.stringify(user));
     if (user.role === 'Administrador') {
       setCurrentView('usuarios');
     } else {
@@ -123,7 +123,7 @@ export default function App() {
 
   const handleLogout = () => {
     setCurrentUser(null);
-    localStorage.removeItem('sdc_current_user');
+    sessionStorage.removeItem('sdc_current_user');
   };
 
   // --- CRUD Handlers Async PostgreSQL ---
@@ -222,13 +222,23 @@ export default function App() {
   };
 
   // Size CRUD handlers
-  const handleAddSize = async (value: number, gender: 'Dama' | 'Caballero' | 'Unisex') => {
+  const handleAddSize = async (value: number, gender: 'Dama' | 'Caballero') => {
     try {
       await api.createSize(value, gender);
       const updatedSizes = await api.getSizes();
       setSizes(updatedSizes);
     } catch (err: any) {
       alert(err.message || 'Error al crear talla');
+    }
+  };
+
+  const handleEditSize = async (id: string, value: number, gender: 'Dama' | 'Caballero') => {
+    try {
+      await api.updateSize(id, value, gender);
+      const updatedSizes = await api.getSizes();
+      setSizes(updatedSizes);
+    } catch (err: any) {
+      alert(err.message || 'Error al actualizar talla');
     }
   };
 
@@ -333,7 +343,7 @@ export default function App() {
         const updatedSelf = updatedUsers.find((u) => u.id === id);
         if (updatedSelf) {
           setCurrentUser(updatedSelf);
-          localStorage.setItem('sdc_current_user', JSON.stringify(updatedSelf));
+          sessionStorage.setItem('sdc_current_user', JSON.stringify(updatedSelf));
         }
       }
     } catch (err: any) {
@@ -355,7 +365,7 @@ export default function App() {
     try {
       await api.updateUser(updatedUser.id, updatedUser);
       setCurrentUser(updatedUser);
-      localStorage.setItem('sdc_current_user', JSON.stringify(updatedUser));
+      sessionStorage.setItem('sdc_current_user', JSON.stringify(updatedUser));
       const updatedUsers = await api.getUsers();
       setUsers(updatedUsers);
     } catch (err: any) {
@@ -425,6 +435,7 @@ export default function App() {
           <SizeCrud
             sizes={sizes}
             onAddSize={handleAddSize}
+            onEditSize={handleEditSize}
             onDeleteSize={handleDeleteSize}
             userRole={currentUser.role}
           />

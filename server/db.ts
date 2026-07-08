@@ -148,6 +148,22 @@ export async function initDb() {
           stock_min INTEGER NOT NULL DEFAULT 5,
           stock_max INTEGER NOT NULL DEFAULT 100
         );
+
+        CREATE TABLE IF NOT EXISTS generos (
+          id VARCHAR(100) PRIMARY KEY,
+          nombre VARCHAR(50) UNIQUE NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS detalles_inventario (
+          id VARCHAR(100) PRIMARY KEY,
+          inventario_id VARCHAR(100) REFERENCES stock(id) ON DELETE CASCADE,
+          product_id VARCHAR(100) REFERENCES products(id) ON DELETE CASCADE,
+          color_id VARCHAR(100) REFERENCES colors(id) ON DELETE CASCADE,
+          size_value NUMERIC(4,1) NOT NULL,
+          quantity INTEGER NOT NULL DEFAULT 0,
+          stock_min INTEGER NOT NULL DEFAULT 5,
+          stock_max INTEGER NOT NULL DEFAULT 100
+        );
       `);
 
       // Seed if empty
@@ -178,6 +194,9 @@ export async function initDb() {
             [col.id, col.name, col.hex]
           );
         }
+        // Seed generos
+        await pool.query("INSERT INTO generos (id, nombre) VALUES ('g-1', 'Dama'), ('g-2', 'Caballero') ON CONFLICT DO NOTHING");
+
         for (const s of INITIAL_SIZES) {
           await pool.query(
             'INSERT INTO sizes (id, value, gender) VALUES ($1, $2, $3) ON CONFLICT DO NOTHING',
@@ -196,6 +215,11 @@ export async function initDb() {
             `INSERT INTO stock (id, product_id, color_id, size_value, quantity, stock_min, stock_max)
              VALUES ($1, $2, $3, $4, $5, $6, $7) ON CONFLICT DO NOTHING`,
             [st.id, st.productId, st.colorId, st.sizeValue, st.quantity, st.stockMin, st.stockMax]
+          );
+          await pool.query(
+            `INSERT INTO detalles_inventario (id, inventario_id, product_id, color_id, size_value, quantity, stock_min, stock_max)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8) ON CONFLICT DO NOTHING`,
+            [`det-${st.id}`, st.id, st.productId, st.colorId, st.sizeValue, st.quantity, st.stockMin, st.stockMax]
           );
         }
       }
@@ -436,6 +460,20 @@ export async function deleteSize(id: string): Promise<boolean> {
   return memDb.sizes.length < len;
 }
 
+export async function updateSize(id: string, s: Partial<Size>): Promise<Size | null> {
+  if (usePostgres && pool) {
+    const res = await pool.query(
+      'UPDATE sizes SET value=COALESCE($1, value), gender=COALESCE($2, gender) WHERE id=$3 RETURNING id, value::float as value, gender',
+      [s.value, s.gender, id]
+    );
+    return res.rows[0] || null;
+  }
+  const idx = memDb.sizes.findIndex(item => item.id === id);
+  if (idx === -1) return null;
+  memDb.sizes[idx] = { ...memDb.sizes[idx], ...s };
+  return memDb.sizes[idx];
+}
+
 // Products
 export async function getProducts(): Promise<Product[]> {
   if (usePostgres && pool) {
@@ -552,6 +590,11 @@ export async function createStock(st: StockItem): Promise<StockItem> {
        VALUES ($1, $2, $3, $4, $5, $6, $7)`,
       [st.id, st.productId, st.colorId, st.sizeValue, st.quantity, st.stockMin, st.stockMax]
     );
+    await pool.query(
+      `INSERT INTO detalles_inventario (id, inventario_id, product_id, color_id, size_value, quantity, stock_min, stock_max)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+      [`det-${st.id}`, st.id, st.productId, st.colorId, st.sizeValue, st.quantity, st.stockMin, st.stockMax]
+    );
     return st;
   }
   memDb.stock.push(st);
@@ -567,6 +610,13 @@ export async function updateStock(id: string, st: Partial<StockItem>): Promise<S
        RETURNING id, product_id as "productId", color_id as "colorId", size_value::float as "sizeValue", quantity, stock_min as "stockMin", stock_max as "stockMax"`,
       [st.quantity, st.stockMin, st.stockMax, id]
     );
+    // Sync with detalles_inventario
+    await pool.query(
+      `UPDATE detalles_inventario
+       SET quantity = COALESCE($1, quantity), stock_min = COALESCE($2, stock_min), stock_max = COALESCE($3, stock_max)
+       WHERE inventario_id = $4`,
+      [st.quantity, st.stockMin, st.stockMax, id]
+    );
     return res.rows[0] || null;
   }
   const idx = memDb.stock.findIndex(s => s.id === id);
@@ -577,6 +627,7 @@ export async function updateStock(id: string, st: Partial<StockItem>): Promise<S
 
 export async function deleteStock(id: string): Promise<boolean> {
   if (usePostgres && pool) {
+    await pool.query('DELETE FROM detalles_inventario WHERE inventario_id = $1', [id]);
     const res = await pool.query('DELETE FROM stock WHERE id = $1', [id]);
     return (res.rowCount ?? 0) > 0;
   }
@@ -587,7 +638,7 @@ export async function deleteStock(id: string): Promise<boolean> {
 
 export async function resetDatabase() {
   if (usePostgres && pool) {
-    await pool.query('TRUNCATE users, brands, categories, colors, sizes, products, stock CASCADE');
+    await pool.query('TRUNCATE users, brands, categories, colors, sizes, products, stock, generos, detalles_inventario CASCADE');
     for (const u of INITIAL_USERS) {
       await pool.query(
         'INSERT INTO users (id, username, name, role, email, password) VALUES ($1, $2, $3, $4, $5, $6)',
@@ -612,6 +663,9 @@ export async function resetDatabase() {
         [col.id, col.name, col.hex]
       );
     }
+    // Seed generos
+    await pool.query("INSERT INTO generos (id, nombre) VALUES ('g-1', 'Dama'), ('g-2', 'Caballero') ON CONFLICT DO NOTHING");
+
     for (const s of INITIAL_SIZES) {
       await pool.query(
         'INSERT INTO sizes (id, value, gender) VALUES ($1, $2, $3)',
@@ -630,6 +684,11 @@ export async function resetDatabase() {
         `INSERT INTO stock (id, product_id, color_id, size_value, quantity, stock_min, stock_max)
          VALUES ($1, $2, $3, $4, $5, $6, $7)`,
         [st.id, st.productId, st.colorId, st.sizeValue, st.quantity, st.stockMin, st.stockMax]
+      );
+      await pool.query(
+        `INSERT INTO detalles_inventario (id, inventario_id, product_id, color_id, size_value, quantity, stock_min, stock_max)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+        [`det-${st.id}`, st.id, st.productId, st.colorId, st.sizeValue, st.quantity, st.stockMin, st.stockMax]
       );
     }
   } else {

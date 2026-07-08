@@ -71,27 +71,31 @@ export default function LoginScreen({ users = INITIAL_USERS, onLoginSuccess }: L
         <div className="absolute -bottom-40 -right-40 w-96 h-96 rounded-full bg-blue-500/10 blur-3xl" />
 
         {/* Small top-left logo tag */}
-        <div className="flex items-center gap-2 relative z-10" id="login-logo-tag">
-          <div className="w-8 h-8 rounded-lg bg-white/10 flex items-center justify-center border border-white/20">
-            <span className="font-display font-bold text-amber-400 text-sm">SDC</span>
+        <div className="flex items-center gap-2.5 relative z-10" id="login-logo-tag">
+          <div className="w-9 h-9 rounded-xl bg-white/5 flex items-center justify-center border border-white/15 overflow-hidden shadow-inner">
+            <img 
+              src="/src/assets/images/shoeflow_logo.jpg" 
+              alt="ShoeFlow Logo" 
+              className="w-full h-full object-cover"
+              referrerPolicy="no-referrer"
+            />
           </div>
-          <span className="font-display tracking-widest font-semibold text-xs text-stone-300">CALZADO PREMIUM</span>
+          <span className="font-display tracking-widest font-black text-sm text-transparent bg-clip-text bg-gradient-to-r from-amber-400 via-stone-200 to-amber-500 uppercase">ShoeFlow</span>
         </div>
-
+ 
         {/* Core Big Title in the middle */}
-        <div className="my-auto py-12 md:py-0 relative z-10" id="login-branding-text">
-          <p className="text-amber-400 font-mono text-xs tracking-widest uppercase mb-3 font-semibold">Almacén & Catálogo</p>
-          <h1 className="text-3xl sm:text-4xl lg:text-5xl font-display font-bold tracking-tight leading-tight mb-6">
-            Sistema de <br />
-            <span className="text-transparent bg-clip-text bg-gradient-to-r from-amber-400 via-stone-100 to-white">
-              Distribución de Calzado
+        <div className="my-auto py-8 md:py-0 relative z-10" id="login-branding-text">
+          <p className="text-amber-400 font-mono text-[10px] tracking-widest uppercase mb-3 font-semibold">Almacén & Catálogo Inteligente</p>
+          <h1 className="text-4xl sm:text-5xl lg:text-6xl font-display font-black tracking-tight leading-none mb-4">
+            <span className="text-transparent bg-clip-text bg-gradient-to-r from-amber-400 via-stone-100 to-amber-500">
+              ShoeFlow
             </span>
           </h1>
-          <p className="text-stone-400 text-sm sm:text-base max-w-md leading-relaxed">
-            Plataforma integral para el control de inventarios, gestión de existencias en tiempo real, catálogo de productos, tallas, colores y marcas de calzado.
+          <p className="text-stone-400 text-xs sm:text-sm max-w-sm leading-relaxed mb-6">
+            Plataforma integral de control de inventarios y gestión de existencias en tiempo real para calzado de dama y caballero.
           </p>
-
-          <div className="mt-8 space-y-3 border-t border-white/10 pt-8" id="features-highlights">
+ 
+          <div className="mt-6 space-y-2.5 border-t border-white/10 pt-6" id="features-highlights">
             <div className="flex items-center gap-2 text-stone-300 text-xs">
               <CheckCircle2 className="w-4 h-4 text-amber-400 shrink-0" />
               <span>Acceso seguro individual por Correo y Contraseña</span>
@@ -109,7 +113,7 @@ export default function LoginScreen({ users = INITIAL_USERS, onLoginSuccess }: L
 
         {/* Bottom copyright info */}
         <div className="text-stone-500 text-xs relative z-10" id="login-footer-branding">
-          © 2026 BigHunters.
+          © 2026 BugHunters.
         </div>
       </div>
 

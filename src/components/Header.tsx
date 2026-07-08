@@ -32,12 +32,17 @@ export default function Header({ currentUser, onLogout, onToggleSidebar, onOpenP
           )}
 
           {/* Micro Logo */}
-          <div className="flex items-center gap-2" id="header-logo">
-            <div className="w-7 h-7 rounded-lg bg-neutral-900 flex items-center justify-center border border-stone-800">
-              <span className="font-display font-black text-amber-400 text-xs tracking-tighter">S</span>
+          <div className="flex items-center gap-2.5" id="header-logo">
+            <div className="w-8 h-8 rounded-lg bg-neutral-950 flex items-center justify-center border border-stone-800 overflow-hidden shadow-2xs">
+              <img 
+                src="/src/assets/images/shoeflow_logo.jpg" 
+                alt="ShoeFlow Logo" 
+                className="w-full h-full object-cover"
+                referrerPolicy="no-referrer"
+              />
             </div>
             <div className="min-w-0">
-              <span className="font-display font-bold text-xs tracking-tight text-stone-900 block leading-none">DistCalzado</span>
+              <span className="font-display font-black text-xs tracking-tight text-transparent bg-clip-text bg-gradient-to-r from-neutral-900 to-amber-600 block leading-none">ShoeFlow</span>
               <span className="text-[8px] font-mono tracking-widest text-stone-400 uppercase leading-none block mt-0.5">Almacén</span>
             </div>
           </div>
@@ -56,16 +61,16 @@ export default function Header({ currentUser, onLogout, onToggleSidebar, onOpenP
             >
               {/* User Badge Info */}
               <div className="hidden sm:flex flex-col items-end text-right" id="user-display-info">
-                <span className="text-[11px] font-bold text-stone-900 leading-tight block group-hover:text-amber-700 transition-colors">
+                <span className="text-[11px] font-bold text-stone-900 leading-tight block group-hover:text-cyan-600 transition-colors">
                   {currentUser.name}
                 </span>
-                <span className="text-[9px] font-bold text-amber-700 bg-amber-50 border border-amber-200/50 rounded-full px-2 py-0.5 leading-none block mt-0.5 uppercase tracking-wider font-mono">
+                <span className="text-[9px] font-bold text-cyan-700 bg-cyan-50 border border-cyan-200/50 rounded-full px-2 py-0.5 leading-none block mt-0.5 uppercase tracking-wider font-mono">
                   {currentUser.role}
                 </span>
               </div>
 
               {/* User Avatar Circle / Custom Image */}
-              <div className="w-8 h-8 rounded-full bg-stone-100 flex items-center justify-center border border-stone-250 text-stone-600 font-bold text-xs shrink-0 uppercase select-none overflow-hidden relative shadow-2xs group-hover:border-amber-400 transition-all">
+              <div className="w-8 h-8 rounded-full bg-stone-100 flex items-center justify-center border border-stone-250 text-stone-600 font-bold text-xs shrink-0 uppercase select-none overflow-hidden relative shadow-2xs group-hover:border-cyan-400 transition-all">
                 {currentUser.avatarUrl ? (
                   <img src={currentUser.avatarUrl} alt={currentUser.name} className="w-full h-full object-cover" />
                 ) : (

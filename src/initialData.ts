@@ -35,23 +35,26 @@ export const INITIAL_COLORS: Color[] = [
 
 export const INITIAL_SIZES: Size[] = [
   // For standard sizing representation
-  { id: 's-22', value: 22, gender: 'Dama' },
-  { id: 's-22.5', value: 22.5, gender: 'Dama' },
-  { id: 's-23', value: 23, gender: 'Dama' },
-  { id: 's-23.5', value: 23.5, gender: 'Dama' },
-  { id: 's-24', value: 24, gender: 'Dama' },
-  { id: 's-24.5', value: 24.5, gender: 'Dama' },
-  { id: 's-25', value: 25, gender: 'Unisex' },
-  { id: 's-25.5', value: 25.5, gender: 'Unisex' },
-  { id: 's-26', value: 26, gender: 'Unisex' },
-  { id: 's-26.5', value: 26.5, gender: 'Caballero' },
-  { id: 's-27', value: 27, gender: 'Caballero' },
-  { id: 's-27.5', value: 27.5, gender: 'Caballero' },
-  { id: 's-28', value: 28, gender: 'Caballero' },
-  { id: 's-28.5', value: 28.5, gender: 'Caballero' },
-  { id: 's-29', value: 29, gender: 'Caballero' },
-  { id: 's-29.5', value: 29.5, gender: 'Caballero' },
-  { id: 's-30', value: 30, gender: 'Caballero' }
+  { id: 's-22-dama', value: 22, gender: 'Dama' },
+  { id: 's-22.5-dama', value: 22.5, gender: 'Dama' },
+  { id: 's-23-dama', value: 23, gender: 'Dama' },
+  { id: 's-23.5-dama', value: 23.5, gender: 'Dama' },
+  { id: 's-24-dama', value: 24, gender: 'Dama' },
+  { id: 's-24.5-dama', value: 24.5, gender: 'Dama' },
+  { id: 's-25-dama', value: 25, gender: 'Dama' },
+  { id: 's-25.5-dama', value: 25.5, gender: 'Dama' },
+  { id: 's-26-dama', value: 26, gender: 'Dama' },
+  { id: 's-25-caballero', value: 25, gender: 'Caballero' },
+  { id: 's-25.5-caballero', value: 25.5, gender: 'Caballero' },
+  { id: 's-26-caballero', value: 26, gender: 'Caballero' },
+  { id: 's-26.5-caballero', value: 26.5, gender: 'Caballero' },
+  { id: 's-27-caballero', value: 27, gender: 'Caballero' },
+  { id: 's-27.5-caballero', value: 27.5, gender: 'Caballero' },
+  { id: 's-28-caballero', value: 28, gender: 'Caballero' },
+  { id: 's-28.5-caballero', value: 28.5, gender: 'Caballero' },
+  { id: 's-29-caballero', value: 29, gender: 'Caballero' },
+  { id: 's-29.5-caballero', value: 29.5, gender: 'Caballero' },
+  { id: 's-30-caballero', value: 30, gender: 'Caballero' }
 ];
 
 export const INITIAL_PRODUCTS: Product[] = [

@@ -49,13 +49,18 @@ export default function Sidebar({ isOpen, onClose, currentView, onSelectView, us
         <div className="space-y-6" id="sidebar-top-section">
           {/* Header row with Title & Close Icon */}
           <div className="flex justify-between items-center pb-4 border-b border-white/10" id="sidebar-header">
-            <div className="flex items-center gap-2">
-              <div className="w-8 h-8 rounded-lg bg-amber-400 flex items-center justify-center">
-                <span className="font-display font-black text-stone-950 text-sm">SDC</span>
+            <div className="flex items-center gap-2.5">
+              <div className="w-8 h-8 rounded-lg bg-neutral-950 flex items-center justify-center border border-white/10 overflow-hidden shadow-xs">
+                <img 
+                  src="/src/assets/images/shoeflow_logo.jpg" 
+                  alt="ShoeFlow Logo" 
+                  className="w-full h-full object-cover"
+                  referrerPolicy="no-referrer"
+                />
               </div>
               <div>
                 <span className="font-display font-bold text-xs tracking-tight block text-white leading-none">Menú Principal</span>
-                <span className="text-[8.5px] font-mono uppercase tracking-wider text-amber-400 block mt-1 font-semibold">Calzado Distribuidor</span>
+                <span className="text-[8.5px] font-mono uppercase tracking-wider text-amber-400 block mt-1 font-bold">ShoeFlow App</span>
               </div>
             </div>
 
@@ -88,11 +93,11 @@ export default function Sidebar({ isOpen, onClose, currentView, onSelectView, us
                   }}
                   className={`w-full flex items-center gap-3 py-2.5 px-3 rounded-xl text-xs font-semibold text-left transition-all ${
                     isActive
-                      ? 'bg-amber-400 text-white shadow-md shadow-amber-400/10'
+                      ? 'bg-gradient-to-r from-amber-400 to-amber-500 text-neutral-950 shadow-md shadow-amber-500/10 font-bold'
                       : 'text-stone-300 hover:bg-white/5 hover:text-white'
                   }`}
                 >
-                  <IconComp className={`w-4 h-4 ${isActive ? 'text-white' : 'text-stone-400'}`} />
+                  <IconComp className={`w-4 h-4 ${isActive ? 'text-neutral-950' : 'text-stone-400'}`} />
                   <span>{item.label}</span>
                 </button>
               );
