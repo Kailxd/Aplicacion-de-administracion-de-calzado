@@ -113,21 +113,10 @@ export async function initDb() {
 
       const client = await Promise.race([connectPromise, timeoutPromise]);
       client.release();
-      usePostgres = true;
       console.log('Successfully connected to PostgreSQL database!');
 
-      // Recreate tables with new schema to eliminate colors/sizes tables and add genero/detalles
+      // Create tables without dropping them to preserve existing user data across restarts/deploys
       await pool.query(`
-        DROP TABLE IF EXISTS detalles_inventario CASCADE;
-        DROP TABLE IF EXISTS stock CASCADE;
-        DROP TABLE IF EXISTS products CASCADE;
-        DROP TABLE IF EXISTS colors CASCADE;
-        DROP TABLE IF EXISTS sizes CASCADE;
-        DROP TABLE IF EXISTS generos CASCADE;
-        DROP TABLE IF EXISTS detalles CASCADE;
-        DROP TABLE IF EXISTS genero CASCADE;
-        DROP TABLE IF EXISTS app_settings CASCADE;
-
         CREATE TABLE IF NOT EXISTS users (
           id VARCHAR(100) PRIMARY KEY,
           username VARCHAR(100) UNIQUE NOT NULL,
@@ -195,37 +184,64 @@ export async function initDb() {
         );
       `);
 
-      // Seed if empty
+      // Seed tables individually if they are empty
+      // 1. Users
       const userCount = await pool.query('SELECT COUNT(*) FROM users');
       if (parseInt(userCount.rows[0].count) === 0) {
-        console.log('Seeding initial data into PostgreSQL...');
-        
-        await pool.query(
-          "INSERT INTO app_settings (key, value) VALUES ('colors', $1), ('sizes', $2) ON CONFLICT (key) DO NOTHING",
-          [JSON.stringify(INITIAL_COLORS), JSON.stringify(INITIAL_SIZES)]
-        );
+        console.log('Seeding initial users into PostgreSQL...');
         for (const u of INITIAL_USERS) {
           await pool.query(
             'INSERT INTO users (id, username, name, role, email, password) VALUES ($1, $2, $3, $4, $5, $6) ON CONFLICT DO NOTHING',
             [u.id, u.username, u.name, u.role, u.email, u.password || '12345']
           );
         }
+      }
+
+      // 2. Brands
+      const brandCount = await pool.query('SELECT COUNT(*) FROM brands');
+      if (parseInt(brandCount.rows[0].count) === 0) {
+        console.log('Seeding initial brands into PostgreSQL...');
         for (const b of INITIAL_BRANDS) {
           await pool.query(
             'INSERT INTO brands (id, name, description, status) VALUES ($1, $2, $3, $4) ON CONFLICT DO NOTHING',
             [b.id, b.name, b.description, b.status]
           );
         }
+      }
+
+      // 3. Categories
+      const categoryCount = await pool.query('SELECT COUNT(*) FROM categories');
+      if (parseInt(categoryCount.rows[0].count) === 0) {
+        console.log('Seeding initial categories into PostgreSQL...');
         for (const c of INITIAL_CATEGORIES) {
           await pool.query(
             'INSERT INTO categories (id, name, description) VALUES ($1, $2, $3) ON CONFLICT DO NOTHING',
             [c.id, c.name, c.description]
           );
         }
-        
-        // Seed genero
-        await pool.query("INSERT INTO genero (id, nombre) VALUES ('g-1', 'Dama'), ('g-2', 'Caballero') ON CONFLICT DO NOTHING");
+      }
 
+      // 4. Genero
+      const generoCount = await pool.query('SELECT COUNT(*) FROM genero');
+      if (parseInt(generoCount.rows[0].count) === 0) {
+        console.log('Seeding initial genero into PostgreSQL...');
+        await pool.query("INSERT INTO genero (id, nombre) VALUES ('g-1', 'Dama'), ('g-2', 'Caballero') ON CONFLICT DO NOTHING");
+      }
+
+      // 5. Colors and Sizes settings
+      const colorsSetting = await pool.query("SELECT value FROM app_settings WHERE key = 'colors'");
+      if (colorsSetting.rows.length === 0) {
+        await pool.query("INSERT INTO app_settings (key, value) VALUES ('colors', $1) ON CONFLICT (key) DO NOTHING", [JSON.stringify(INITIAL_COLORS)]);
+      }
+      const sizesSetting = await pool.query("SELECT value FROM app_settings WHERE key = 'sizes'");
+      if (sizesSetting.rows.length === 0) {
+        await pool.query("INSERT INTO app_settings (key, value) VALUES ('sizes', $1) ON CONFLICT (key) DO NOTHING", [JSON.stringify(INITIAL_SIZES)]);
+      }
+
+      // 6. Products & Detalles
+      const productCount = await pool.query('SELECT COUNT(*) FROM products');
+      if (parseInt(productCount.rows[0].count) === 0) {
+        console.log('Seeding initial products and details into PostgreSQL...');
         for (const p of INITIAL_PRODUCTS) {
           await pool.query(
             `INSERT INTO products (id, code, brand_id, name, colors, sizes, description, price, image_url)
@@ -243,7 +259,12 @@ export async function initDb() {
             [`det-${p.id}`, p.id, generoId, p.categoryId]
           );
         }
-        
+      }
+
+      // 7. Stock
+      const stockCount = await pool.query('SELECT COUNT(*) FROM stock');
+      if (parseInt(stockCount.rows[0].count) === 0) {
+        console.log('Seeding initial stock into PostgreSQL...');
         for (const st of INITIAL_STOCK) {
           const col = INITIAL_COLORS.find(c => c.id === st.colorId);
           const colorName = col ? col.name : 'Negro';
@@ -256,6 +277,10 @@ export async function initDb() {
           );
         }
       }
+
+      // Finally enable PostgreSQL
+      usePostgres = true;
+      console.log('PostgreSQL database successfully initialized and verified!');
     } catch (err) {
       console.warn('PostgreSQL connection error or not configured. Falling back to local relational store:', (err as Error).message);
       usePostgres = false;
