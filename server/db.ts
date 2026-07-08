@@ -26,8 +26,43 @@ class MemoryDatabase {
   categories: Category[] = [...INITIAL_CATEGORIES];
   colors: Color[] = [...INITIAL_COLORS];
   sizes: Size[] = [...INITIAL_SIZES];
+  generos = [
+    { id: 'g-1', nombre: 'Dama' },
+    { id: 'g-2', nombre: 'Caballero' }
+  ];
+  detalles: { id: string; productId: string; generoId: string; categoryId: string; }[] = [];
   products: Product[] = [...INITIAL_PRODUCTS];
   stock: StockItem[] = [...INITIAL_STOCK];
+
+  constructor() {
+    this.syncDetalles();
+  }
+
+  syncDetalles() {
+    this.detalles = this.products.map(p => {
+      const gId = p.gender === 'Mujer' ? 'g-1' : 'g-2';
+      return {
+        id: `det-${p.id}`,
+        productId: p.id,
+        generoId: gId,
+        categoryId: p.categoryId
+      };
+    });
+  }
+
+  getProductsWithDetalles() {
+    return this.products.map(p => {
+      const d = this.detalles.find(det => det.productId === p.id);
+      const categoryId = d ? d.categoryId : p.categoryId;
+      const g = d ? this.generos.find(gen => gen.id === d.generoId) : null;
+      const gender = g ? (g.nombre === 'Dama' ? 'Mujer' : 'Hombre') : p.gender;
+      return {
+        ...p,
+        gender,
+        categoryId
+      } as Product;
+    });
+  }
 
   reset() {
     this.users = JSON.parse(JSON.stringify(INITIAL_USERS));
@@ -37,6 +72,7 @@ class MemoryDatabase {
     this.sizes = JSON.parse(JSON.stringify(INITIAL_SIZES));
     this.products = JSON.parse(JSON.stringify(INITIAL_PRODUCTS));
     this.stock = JSON.parse(JSON.stringify(INITIAL_STOCK));
+    this.syncDetalles();
   }
 }
 
@@ -80,8 +116,18 @@ export async function initDb() {
       usePostgres = true;
       console.log('Successfully connected to PostgreSQL database!');
 
-      // Create tables
+      // Recreate tables with new schema to eliminate colors/sizes tables and add genero/detalles
       await pool.query(`
+        DROP TABLE IF EXISTS detalles_inventario CASCADE;
+        DROP TABLE IF EXISTS stock CASCADE;
+        DROP TABLE IF EXISTS products CASCADE;
+        DROP TABLE IF EXISTS colors CASCADE;
+        DROP TABLE IF EXISTS sizes CASCADE;
+        DROP TABLE IF EXISTS generos CASCADE;
+        DROP TABLE IF EXISTS detalles CASCADE;
+        DROP TABLE IF EXISTS genero CASCADE;
+        DROP TABLE IF EXISTS app_settings CASCADE;
+
         CREATE TABLE IF NOT EXISTS users (
           id VARCHAR(100) PRIMARY KEY,
           username VARCHAR(100) UNIQUE NOT NULL,
@@ -93,10 +139,6 @@ export async function initDb() {
           is_verified BOOLEAN DEFAULT TRUE,
           verification_code VARCHAR(10)
         );
-
-        -- Ensure columns exist for existing deployments
-        ALTER TABLE users ADD COLUMN IF NOT EXISTS is_verified BOOLEAN DEFAULT TRUE;
-        ALTER TABLE users ADD COLUMN IF NOT EXISTS verification_code VARCHAR(10);
 
         CREATE TABLE IF NOT EXISTS brands (
           id VARCHAR(100) PRIMARY KEY,
@@ -111,58 +153,45 @@ export async function initDb() {
           description TEXT NOT NULL
         );
 
-        CREATE TABLE IF NOT EXISTS colors (
+        CREATE TABLE IF NOT EXISTS genero (
           id VARCHAR(100) PRIMARY KEY,
-          name VARCHAR(100) UNIQUE NOT NULL,
-          hex VARCHAR(20) NOT NULL
-        );
-
-        CREATE TABLE IF NOT EXISTS sizes (
-          id VARCHAR(100) PRIMARY KEY,
-          value NUMERIC(4,1) NOT NULL,
-          gender VARCHAR(20) NOT NULL,
-          CONSTRAINT unique_size_gender UNIQUE (value, gender)
+          nombre VARCHAR(50) UNIQUE NOT NULL
         );
 
         CREATE TABLE IF NOT EXISTS products (
           id VARCHAR(100) PRIMARY KEY,
           code VARCHAR(5) UNIQUE NOT NULL,
-          gender VARCHAR(20) NOT NULL,
-          category_id VARCHAR(100) NOT NULL REFERENCES categories(id) ON DELETE CASCADE,
           brand_id VARCHAR(100) NOT NULL REFERENCES brands(id) ON DELETE CASCADE,
           name VARCHAR(50) NOT NULL,
           colors TEXT[] NOT NULL DEFAULT '{}',
           sizes NUMERIC[] NOT NULL DEFAULT '{}',
           description VARCHAR(150) NOT NULL,
           price NUMERIC(10,2) NOT NULL,
-          image_url TEXT NOT NULL,
-          CONSTRAINT unique_brand_category_name UNIQUE (brand_id, category_id, name)
+          image_url TEXT NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS detalles (
+          id VARCHAR(100) PRIMARY KEY,
+          product_id VARCHAR(100) NOT NULL REFERENCES products(id) ON DELETE CASCADE,
+          genero_id VARCHAR(100) NOT NULL REFERENCES genero(id) ON DELETE CASCADE,
+          category_id VARCHAR(100) NOT NULL REFERENCES categories(id) ON DELETE CASCADE
         );
 
         CREATE TABLE IF NOT EXISTS stock (
           id VARCHAR(100) PRIMARY KEY,
           product_id VARCHAR(100) NOT NULL REFERENCES products(id) ON DELETE CASCADE,
-          color_id VARCHAR(100) NOT NULL REFERENCES colors(id) ON DELETE CASCADE,
+          color_id VARCHAR(100) NOT NULL,
+          color_name VARCHAR(100) NOT NULL,
+          color_hex VARCHAR(20) NOT NULL,
           size_value NUMERIC(4,1) NOT NULL,
           quantity INTEGER NOT NULL DEFAULT 0,
           stock_min INTEGER NOT NULL DEFAULT 5,
           stock_max INTEGER NOT NULL DEFAULT 100
         );
 
-        CREATE TABLE IF NOT EXISTS generos (
-          id VARCHAR(100) PRIMARY KEY,
-          nombre VARCHAR(50) UNIQUE NOT NULL
-        );
-
-        CREATE TABLE IF NOT EXISTS detalles_inventario (
-          id VARCHAR(100) PRIMARY KEY,
-          inventario_id VARCHAR(100) REFERENCES stock(id) ON DELETE CASCADE,
-          product_id VARCHAR(100) REFERENCES products(id) ON DELETE CASCADE,
-          color_id VARCHAR(100) REFERENCES colors(id) ON DELETE CASCADE,
-          size_value NUMERIC(4,1) NOT NULL,
-          quantity INTEGER NOT NULL DEFAULT 0,
-          stock_min INTEGER NOT NULL DEFAULT 5,
-          stock_max INTEGER NOT NULL DEFAULT 100
+        CREATE TABLE IF NOT EXISTS app_settings (
+          key VARCHAR(100) PRIMARY KEY,
+          value JSONB NOT NULL
         );
       `);
 
@@ -170,6 +199,11 @@ export async function initDb() {
       const userCount = await pool.query('SELECT COUNT(*) FROM users');
       if (parseInt(userCount.rows[0].count) === 0) {
         console.log('Seeding initial data into PostgreSQL...');
+        
+        await pool.query(
+          "INSERT INTO app_settings (key, value) VALUES ('colors', $1), ('sizes', $2) ON CONFLICT (key) DO NOTHING",
+          [JSON.stringify(INITIAL_COLORS), JSON.stringify(INITIAL_SIZES)]
+        );
         for (const u of INITIAL_USERS) {
           await pool.query(
             'INSERT INTO users (id, username, name, role, email, password) VALUES ($1, $2, $3, $4, $5, $6) ON CONFLICT DO NOTHING',
@@ -188,38 +222,37 @@ export async function initDb() {
             [c.id, c.name, c.description]
           );
         }
-        for (const col of INITIAL_COLORS) {
-          await pool.query(
-            'INSERT INTO colors (id, name, hex) VALUES ($1, $2, $3) ON CONFLICT DO NOTHING',
-            [col.id, col.name, col.hex]
-          );
-        }
-        // Seed generos
-        await pool.query("INSERT INTO generos (id, nombre) VALUES ('g-1', 'Dama'), ('g-2', 'Caballero') ON CONFLICT DO NOTHING");
+        
+        // Seed genero
+        await pool.query("INSERT INTO genero (id, nombre) VALUES ('g-1', 'Dama'), ('g-2', 'Caballero') ON CONFLICT DO NOTHING");
 
-        for (const s of INITIAL_SIZES) {
-          await pool.query(
-            'INSERT INTO sizes (id, value, gender) VALUES ($1, $2, $3) ON CONFLICT DO NOTHING',
-            [s.id, s.value, s.gender]
-          );
-        }
         for (const p of INITIAL_PRODUCTS) {
           await pool.query(
-            `INSERT INTO products (id, code, gender, category_id, brand_id, name, colors, sizes, description, price, image_url)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) ON CONFLICT DO NOTHING`,
-            [p.id, p.code, p.gender, p.categoryId, p.brandId, p.name, p.colors, p.sizes, p.description, p.price, p.imageUrl]
+            `INSERT INTO products (id, code, brand_id, name, colors, sizes, description, price, image_url)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) ON CONFLICT DO NOTHING`,
+            [p.id, p.code, p.brandId, p.name, p.colors, p.sizes, p.description, p.price, p.imageUrl]
+          );
+
+          const gName = p.gender === 'Mujer' ? 'Dama' : 'Caballero';
+          const genRes = await pool.query("SELECT id FROM genero WHERE nombre = $1", [gName]);
+          const generoId = genRes.rows[0]?.id || 'g-1';
+
+          await pool.query(
+            `INSERT INTO detalles (id, product_id, genero_id, category_id)
+             VALUES ($1, $2, $3, $4) ON CONFLICT DO NOTHING`,
+            [`det-${p.id}`, p.id, generoId, p.categoryId]
           );
         }
+        
         for (const st of INITIAL_STOCK) {
+          const col = INITIAL_COLORS.find(c => c.id === st.colorId);
+          const colorName = col ? col.name : 'Negro';
+          const colorHex = col ? col.hex : '#000000';
+
           await pool.query(
-            `INSERT INTO stock (id, product_id, color_id, size_value, quantity, stock_min, stock_max)
-             VALUES ($1, $2, $3, $4, $5, $6, $7) ON CONFLICT DO NOTHING`,
-            [st.id, st.productId, st.colorId, st.sizeValue, st.quantity, st.stockMin, st.stockMax]
-          );
-          await pool.query(
-            `INSERT INTO detalles_inventario (id, inventario_id, product_id, color_id, size_value, quantity, stock_min, stock_max)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8) ON CONFLICT DO NOTHING`,
-            [`det-${st.id}`, st.id, st.productId, st.colorId, st.sizeValue, st.quantity, st.stockMin, st.stockMax]
+            `INSERT INTO stock (id, product_id, color_id, color_name, color_hex, size_value, quantity, stock_min, stock_max)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) ON CONFLICT DO NOTHING`,
+            [st.id, st.productId, st.colorId, colorName, colorHex, st.sizeValue, st.quantity, st.stockMin, st.stockMax]
           );
         }
       }
@@ -393,84 +426,109 @@ export async function deleteCategory(id: string): Promise<boolean> {
 // Colors
 export async function getColors(): Promise<Color[]> {
   if (usePostgres && pool) {
-    const res = await pool.query('SELECT id, name, hex FROM colors ORDER BY name ASC');
-    return res.rows;
+    const res = await pool.query("SELECT value FROM app_settings WHERE key = 'colors'");
+    if (res.rows.length > 0) {
+      memDb.colors = res.rows[0].value as Color[];
+      return memDb.colors;
+    }
+    await pool.query("INSERT INTO app_settings (key, value) VALUES ('colors', $1) ON CONFLICT (key) DO NOTHING", [JSON.stringify(memDb.colors)]);
+    return memDb.colors;
   }
   return memDb.colors;
 }
 
 export async function createColor(c: Color): Promise<Color> {
-  if (usePostgres && pool) {
-    await pool.query('INSERT INTO colors (id, name, hex) VALUES ($1, $2, $3)', [c.id, c.name, c.hex]);
-    return c;
+  const exists = memDb.colors.some(col => col.id === c.id);
+  if (!exists) {
+    memDb.colors.push(c);
   }
-  memDb.colors.push(c);
+  if (usePostgres && pool) {
+    await pool.query(
+      "INSERT INTO app_settings (key, value) VALUES ('colors', $1) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value",
+      [JSON.stringify(memDb.colors)]
+    );
+  }
   return c;
 }
 
 export async function updateColor(id: string, c: Partial<Color>): Promise<Color | null> {
-  if (usePostgres && pool) {
-    const res = await pool.query(
-      'UPDATE colors SET name=COALESCE($1, name), hex=COALESCE($2, hex) WHERE id=$3 RETURNING id, name, hex',
-      [c.name, c.hex, id]
-    );
-    return res.rows[0] || null;
-  }
   const idx = memDb.colors.findIndex(item => item.id === id);
   if (idx === -1) return null;
   memDb.colors[idx] = { ...memDb.colors[idx], ...c };
+  if (usePostgres && pool) {
+    await pool.query(
+      "INSERT INTO app_settings (key, value) VALUES ('colors', $1) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value",
+      [JSON.stringify(memDb.colors)]
+    );
+  }
   return memDb.colors[idx];
 }
 
 export async function deleteColor(id: string): Promise<boolean> {
-  if (usePostgres && pool) {
-    const res = await pool.query('DELETE FROM colors WHERE id = $1', [id]);
-    return (res.rowCount ?? 0) > 0;
-  }
   const len = memDb.colors.length;
   memDb.colors = memDb.colors.filter(c => c.id !== id);
-  return memDb.colors.length < len;
+  if (memDb.colors.length < len) {
+    if (usePostgres && pool) {
+      await pool.query(
+        "INSERT INTO app_settings (key, value) VALUES ('colors', $1) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value",
+        [JSON.stringify(memDb.colors)]
+      );
+    }
+    return true;
+  }
+  return false;
 }
 
 // Sizes
 export async function getSizes(): Promise<Size[]> {
   if (usePostgres && pool) {
-    const res = await pool.query('SELECT id, value::float as value, gender FROM sizes ORDER BY value ASC');
-    return res.rows;
+    const res = await pool.query("SELECT value FROM app_settings WHERE key = 'sizes'");
+    if (res.rows.length > 0) {
+      memDb.sizes = res.rows[0].value as Size[];
+      return [...memDb.sizes].sort((a, b) => a.value - b.value);
+    }
+    await pool.query("INSERT INTO app_settings (key, value) VALUES ('sizes', $1) ON CONFLICT (key) DO NOTHING", [JSON.stringify(memDb.sizes)]);
+    return [...memDb.sizes].sort((a, b) => a.value - b.value);
   }
   return [...memDb.sizes].sort((a, b) => a.value - b.value);
 }
 
 export async function createSize(s: Size): Promise<Size> {
-  if (usePostgres && pool) {
-    await pool.query('INSERT INTO sizes (id, value, gender) VALUES ($1, $2, $3)', [s.id, s.value, s.gender]);
-    return s;
-  }
   memDb.sizes = [...memDb.sizes.filter(existing => !(existing.value === s.value && existing.gender === s.gender)), s].sort((a, b) => a.value - b.value);
+  if (usePostgres && pool) {
+    await pool.query(
+      "INSERT INTO app_settings (key, value) VALUES ('sizes', $1) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value",
+      [JSON.stringify(memDb.sizes)]
+    );
+  }
   return s;
 }
 
 export async function deleteSize(id: string): Promise<boolean> {
-  if (usePostgres && pool) {
-    const res = await pool.query('DELETE FROM sizes WHERE id = $1', [id]);
-    return (res.rowCount ?? 0) > 0;
-  }
   const len = memDb.sizes.length;
   memDb.sizes = memDb.sizes.filter(s => s.id !== id);
-  return memDb.sizes.length < len;
+  if (memDb.sizes.length < len) {
+    if (usePostgres && pool) {
+      await pool.query(
+        "INSERT INTO app_settings (key, value) VALUES ('sizes', $1) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value",
+        [JSON.stringify(memDb.sizes)]
+      );
+    }
+    return true;
+  }
+  return false;
 }
 
 export async function updateSize(id: string, s: Partial<Size>): Promise<Size | null> {
-  if (usePostgres && pool) {
-    const res = await pool.query(
-      'UPDATE sizes SET value=COALESCE($1, value), gender=COALESCE($2, gender) WHERE id=$3 RETURNING id, value::float as value, gender',
-      [s.value, s.gender, id]
-    );
-    return res.rows[0] || null;
-  }
   const idx = memDb.sizes.findIndex(item => item.id === id);
   if (idx === -1) return null;
   memDb.sizes[idx] = { ...memDb.sizes[idx], ...s };
+  if (usePostgres && pool) {
+    await pool.query(
+      "INSERT INTO app_settings (key, value) VALUES ('sizes', $1) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value",
+      [JSON.stringify(memDb.sizes)]
+    );
+  }
   return memDb.sizes[idx];
 }
 
@@ -479,47 +537,73 @@ export async function getProducts(): Promise<Product[]> {
   if (usePostgres && pool) {
     const res = await pool.query(`
       SELECT 
-        id, 
-        code, 
-        gender, 
-        category_id as "categoryId", 
-        brand_id as "brandId", 
-        name, 
-        colors, 
-        sizes::float[] as sizes, 
-        description, 
-        price::float as price, 
-        image_url as "imageUrl" 
-      FROM products 
-      ORDER BY name ASC
+        p.id, 
+        p.code, 
+        g.nombre as gender, 
+        d.category_id as "categoryId", 
+        p.brand_id as "brandId", 
+        p.name, 
+        p.colors, 
+        p.sizes::float[] as sizes, 
+        p.description, 
+        p.price::float as price, 
+        p.image_url as "imageUrl" 
+      FROM products p
+      LEFT JOIN detalles d ON d.product_id = p.id
+      LEFT JOIN genero g ON g.id = d.genero_id
+      ORDER BY p.name ASC
     `);
     return res.rows;
   }
-  return memDb.products;
+  return memDb.getProductsWithDetalles();
 }
 
 export async function getProductById(id: string): Promise<Product | null> {
   if (usePostgres && pool) {
     const res = await pool.query(`
       SELECT 
-        id, code, gender, category_id as "categoryId", brand_id as "brandId", name, colors, sizes::float[] as sizes, description, price::float as price, image_url as "imageUrl" 
-      FROM products WHERE id = $1
+        p.id, 
+        p.code, 
+        g.nombre as gender, 
+        d.category_id as "categoryId", 
+        p.brand_id as "brandId", 
+        p.name, 
+        p.colors, 
+        p.sizes::float[] as sizes, 
+        p.description, 
+        p.price::float as price, 
+        p.image_url as "imageUrl" 
+      FROM products p
+      LEFT JOIN detalles d ON d.product_id = p.id
+      LEFT JOIN genero g ON g.id = d.genero_id
+      WHERE p.id = $1
     `, [id]);
     return res.rows[0] || null;
   }
-  return memDb.products.find(p => p.id === id) || null;
+  return memDb.getProductsWithDetalles().find(p => p.id === id) || null;
 }
 
 export async function createProduct(p: Product): Promise<Product> {
   if (usePostgres && pool) {
     await pool.query(
-      `INSERT INTO products (id, code, gender, category_id, brand_id, name, colors, sizes, description, price, image_url)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
-      [p.id, p.code, p.gender, p.categoryId, p.brandId, p.name, p.colors, p.sizes, p.description, p.price, p.imageUrl]
+      `INSERT INTO products (id, code, brand_id, name, colors, sizes, description, price, image_url)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+      [p.id, p.code, p.brandId, p.name, p.colors, p.sizes, p.description, p.price, p.imageUrl]
+    );
+
+    const gName = p.gender === 'Mujer' ? 'Dama' : 'Caballero';
+    const genRes = await pool.query("SELECT id FROM genero WHERE nombre = $1", [gName]);
+    const generoId = genRes.rows[0]?.id || 'g-1';
+
+    await pool.query(
+      `INSERT INTO detalles (id, product_id, genero_id, category_id)
+       VALUES ($1, $2, $3, $4)`,
+      [`det-${p.id}`, p.id, generoId, p.categoryId]
     );
     return p;
   }
   memDb.products.push(p);
+  memDb.syncDetalles();
   return p;
 }
 
@@ -528,8 +612,6 @@ export async function updateProduct(id: string, pPayload: Partial<Product>): Pro
     const current = await getProductById(id);
     if (!current) return null;
     const code = pPayload.code ?? current.code;
-    const gender = pPayload.gender ?? current.gender;
-    const categoryId = pPayload.categoryId ?? current.categoryId;
     const brandId = pPayload.brandId ?? current.brandId;
     const name = pPayload.name ?? current.name;
     const colors = pPayload.colors ?? current.colors;
@@ -540,10 +622,24 @@ export async function updateProduct(id: string, pPayload: Partial<Product>): Pro
 
     await pool.query(
       `UPDATE products 
-       SET code=$1, gender=$2, category_id=$3, brand_id=$4, name=$5, colors=$6, sizes=$7, description=$8, price=$9, image_url=$10
-       WHERE id=$11`,
-      [code, gender, categoryId, brandId, name, colors, sizes, description, price, imageUrl, id]
+       SET code=$1, brand_id=$2, name=$3, colors=$4, sizes=$5, description=$6, price=$7, image_url=$8
+       WHERE id=$9`,
+      [code, brandId, name, colors, sizes, description, price, imageUrl, id]
     );
+
+    const gender = pPayload.gender ?? current.gender;
+    const categoryId = pPayload.categoryId ?? current.categoryId;
+    const gName = gender === 'Mujer' ? 'Dama' : 'Caballero';
+    const genRes = await pool.query("SELECT id FROM genero WHERE nombre = $1", [gName]);
+    const generoId = genRes.rows[0]?.id || 'g-1';
+
+    await pool.query(
+      `UPDATE detalles 
+       SET genero_id=$1, category_id=$2
+       WHERE product_id=$3`,
+      [generoId, categoryId, id]
+    );
+
     return (await getProductById(id))!;
   }
   const idx = memDb.products.findIndex(item => item.id === id);
@@ -555,12 +651,14 @@ export async function updateProduct(id: string, pPayload: Partial<Product>): Pro
 export async function deleteProduct(id: string): Promise<boolean> {
   if (usePostgres && pool) {
     await pool.query('DELETE FROM stock WHERE product_id = $1', [id]);
+    await pool.query('DELETE FROM detalles WHERE product_id = $1', [id]);
     const res = await pool.query('DELETE FROM products WHERE id = $1', [id]);
     return (res.rowCount ?? 0) > 0;
   }
   memDb.stock = memDb.stock.filter(s => s.productId !== id);
   const len = memDb.products.length;
   memDb.products = memDb.products.filter(p => p.id !== id);
+  memDb.syncDetalles();
   return memDb.products.length < len;
 }
 
@@ -585,15 +683,14 @@ export async function getStock(): Promise<StockItem[]> {
 
 export async function createStock(st: StockItem): Promise<StockItem> {
   if (usePostgres && pool) {
+    const col = memDb.colors.find(c => c.id === st.colorId);
+    const colorName = col ? col.name : 'Negro';
+    const colorHex = col ? col.hex : '#000000';
+
     await pool.query(
-      `INSERT INTO stock (id, product_id, color_id, size_value, quantity, stock_min, stock_max)
-       VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-      [st.id, st.productId, st.colorId, st.sizeValue, st.quantity, st.stockMin, st.stockMax]
-    );
-    await pool.query(
-      `INSERT INTO detalles_inventario (id, inventario_id, product_id, color_id, size_value, quantity, stock_min, stock_max)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
-      [`det-${st.id}`, st.id, st.productId, st.colorId, st.sizeValue, st.quantity, st.stockMin, st.stockMax]
+      `INSERT INTO stock (id, product_id, color_id, color_name, color_hex, size_value, quantity, stock_min, stock_max)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+      [st.id, st.productId, st.colorId, colorName, colorHex, st.sizeValue, st.quantity, st.stockMin, st.stockMax]
     );
     return st;
   }
@@ -610,13 +707,6 @@ export async function updateStock(id: string, st: Partial<StockItem>): Promise<S
        RETURNING id, product_id as "productId", color_id as "colorId", size_value::float as "sizeValue", quantity, stock_min as "stockMin", stock_max as "stockMax"`,
       [st.quantity, st.stockMin, st.stockMax, id]
     );
-    // Sync with detalles_inventario
-    await pool.query(
-      `UPDATE detalles_inventario
-       SET quantity = COALESCE($1, quantity), stock_min = COALESCE($2, stock_min), stock_max = COALESCE($3, stock_max)
-       WHERE inventario_id = $4`,
-      [st.quantity, st.stockMin, st.stockMax, id]
-    );
     return res.rows[0] || null;
   }
   const idx = memDb.stock.findIndex(s => s.id === id);
@@ -627,7 +717,6 @@ export async function updateStock(id: string, st: Partial<StockItem>): Promise<S
 
 export async function deleteStock(id: string): Promise<boolean> {
   if (usePostgres && pool) {
-    await pool.query('DELETE FROM detalles_inventario WHERE inventario_id = $1', [id]);
     const res = await pool.query('DELETE FROM stock WHERE id = $1', [id]);
     return (res.rowCount ?? 0) > 0;
   }
@@ -638,7 +727,11 @@ export async function deleteStock(id: string): Promise<boolean> {
 
 export async function resetDatabase() {
   if (usePostgres && pool) {
-    await pool.query('TRUNCATE users, brands, categories, colors, sizes, products, stock, generos, detalles_inventario CASCADE');
+    await pool.query('TRUNCATE users, brands, categories, products, stock, genero, detalles, app_settings CASCADE');
+    await pool.query(
+      "INSERT INTO app_settings (key, value) VALUES ('colors', $1), ('sizes', $2) ON CONFLICT (key) DO NOTHING",
+      [JSON.stringify(INITIAL_COLORS), JSON.stringify(INITIAL_SIZES)]
+    );
     for (const u of INITIAL_USERS) {
       await pool.query(
         'INSERT INTO users (id, username, name, role, email, password) VALUES ($1, $2, $3, $4, $5, $6)',
@@ -657,38 +750,35 @@ export async function resetDatabase() {
         [c.id, c.name, c.description]
       );
     }
-    for (const col of INITIAL_COLORS) {
-      await pool.query(
-        'INSERT INTO colors (id, name, hex) VALUES ($1, $2, $3)',
-        [col.id, col.name, col.hex]
-      );
-    }
-    // Seed generos
-    await pool.query("INSERT INTO generos (id, nombre) VALUES ('g-1', 'Dama'), ('g-2', 'Caballero') ON CONFLICT DO NOTHING");
+    // Seed genero
+    await pool.query("INSERT INTO genero (id, nombre) VALUES ('g-1', 'Dama'), ('g-2', 'Caballero') ON CONFLICT DO NOTHING");
 
-    for (const s of INITIAL_SIZES) {
-      await pool.query(
-        'INSERT INTO sizes (id, value, gender) VALUES ($1, $2, $3)',
-        [s.id, s.value, s.gender]
-      );
-    }
     for (const p of INITIAL_PRODUCTS) {
       await pool.query(
-        `INSERT INTO products (id, code, gender, category_id, brand_id, name, colors, sizes, description, price, image_url)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
-        [p.id, p.code, p.gender, p.categoryId, p.brandId, p.name, p.colors, p.sizes, p.description, p.price, p.imageUrl]
+        `INSERT INTO products (id, code, brand_id, name, colors, sizes, description, price, image_url)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+        [p.id, p.code, p.brandId, p.name, p.colors, p.sizes, p.description, p.price, p.imageUrl]
+      );
+
+      const gName = p.gender === 'Mujer' ? 'Dama' : 'Caballero';
+      const genRes = await pool.query("SELECT id FROM genero WHERE nombre = $1", [gName]);
+      const generoId = genRes.rows[0]?.id || 'g-1';
+
+      await pool.query(
+        `INSERT INTO detalles (id, product_id, genero_id, category_id)
+         VALUES ($1, $2, $3, $4)`,
+        [`det-${p.id}`, p.id, generoId, p.categoryId]
       );
     }
     for (const st of INITIAL_STOCK) {
+      const col = INITIAL_COLORS.find(c => c.id === st.colorId);
+      const colorName = col ? col.name : 'Negro';
+      const colorHex = col ? col.hex : '#000000';
+
       await pool.query(
-        `INSERT INTO stock (id, product_id, color_id, size_value, quantity, stock_min, stock_max)
-         VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-        [st.id, st.productId, st.colorId, st.sizeValue, st.quantity, st.stockMin, st.stockMax]
-      );
-      await pool.query(
-        `INSERT INTO detalles_inventario (id, inventario_id, product_id, color_id, size_value, quantity, stock_min, stock_max)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
-        [`det-${st.id}`, st.id, st.productId, st.colorId, st.sizeValue, st.quantity, st.stockMin, st.stockMax]
+        `INSERT INTO stock (id, product_id, color_id, color_name, color_hex, size_value, quantity, stock_min, stock_max)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+        [st.id, st.productId, st.colorId, colorName, colorHex, st.sizeValue, st.quantity, st.stockMin, st.stockMax]
       );
     }
   } else {
