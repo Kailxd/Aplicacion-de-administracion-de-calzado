@@ -26,7 +26,11 @@ export default function CategoryCrud({ categories, onAddCategory, onEditCategory
 
   const isReadOnly = userRole === 'Empleado';
 
-  const filteredCategories = categories.filter((cat) =>
+  const sortedCategories = [...categories].sort((a, b) =>
+    a.id.localeCompare(b.id, undefined, { numeric: true, sensitivity: 'base' })
+  );
+
+  const filteredCategories = sortedCategories.filter((cat) =>
     cat.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
     (cat.description && cat.description.toLowerCase().includes(searchTerm.toLowerCase()))
   );

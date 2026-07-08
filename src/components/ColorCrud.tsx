@@ -26,7 +26,11 @@ export default function ColorCrud({ colors, onAddColor, onEditColor, onDeleteCol
 
   const isReadOnly = userRole === 'Empleado';
 
-  const filteredColors = colors.filter((col) =>
+  const sortedColors = [...colors].sort((a, b) =>
+    a.id.localeCompare(b.id, undefined, { numeric: true, sensitivity: 'base' })
+  );
+
+  const filteredColors = sortedColors.filter((col) =>
     col.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
     col.hex.toLowerCase().includes(searchTerm.toLowerCase())
   );
@@ -59,7 +63,9 @@ export default function ColorCrud({ colors, onAddColor, onEditColor, onDeleteCol
     if (editingColor) {
       const isUnchanged = cleanColorName.toLowerCase() === editingColor.name.toLowerCase() && cleanColorHex.toLowerCase() === editingColor.hex.toLowerCase();
       if (isUnchanged) {
-        setError('Debes modificar el nombre o el color hexadecimal antes de guardar.');
+        const msg = 'Debes modificar el nombre o el color hexadecimal antes de guardar.';
+        setError(msg);
+        alert(msg);
         return;
       }
     }

@@ -75,7 +75,11 @@ export default function ProductCrud({
     }
   }, [gender]);
 
-  const filteredProducts = products.filter((p) => {
+  const sortedProducts = [...products].sort((a, b) =>
+    a.id.localeCompare(b.id, undefined, { numeric: true, sensitivity: 'base' })
+  );
+
+  const filteredProducts = sortedProducts.filter((p) => {
     const brandName = brands.find((b) => b.id === p.brandId)?.name || '';
     const catName = categories.find((c) => c.id === p.categoryId)?.name || '';
     return (

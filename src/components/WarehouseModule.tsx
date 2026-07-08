@@ -101,8 +101,12 @@ export default function WarehouseModule({
     }
   };
 
+  const sortedStock = [...stock].sort((a, b) =>
+    a.id.localeCompare(b.id, undefined, { numeric: true, sensitivity: 'base' })
+  );
+
   // Filtering global inventory entries
-  const filteredStockList = stock.filter((item) => {
+  const filteredStockList = sortedStock.filter((item) => {
     const product = products.find((p) => p.id === item.productId);
     if (!product) return false;
 

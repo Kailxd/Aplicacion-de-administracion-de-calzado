@@ -7,6 +7,25 @@ import * as db from './server/db.js';
 import { validateProductData, validatePassword } from './server/validators.js';
 import { sendVerificationEmail } from './server/email.js';
 
+function getNextSequentialId(ids: string[], prefix: string): string {
+  let maxId = 0;
+  const regex = new RegExp(`^${prefix.replace('-', '\\-')}(\\d+)$`, 'i');
+  ids.forEach(id => {
+    const match = id.match(regex);
+    if (match) {
+      const val = parseInt(match[1]);
+      if (val > maxId && val < 1000000) {
+        maxId = val;
+      }
+    }
+  });
+  const nextVal = maxId + 1;
+  if (prefix === 'col-') {
+    return `col-${nextVal.toString().padStart(2, '0')}`;
+  }
+  return `${prefix}${nextVal}`;
+}
+
 async function startServer() {
   try {
     await db.initDb();
@@ -129,9 +148,11 @@ async function startServer() {
     }
 
     const verificationCode = Math.floor(100000 + Math.random() * 900000).toString();
+    const users = await db.getUsers();
+    const nextId = getNextSequentialId(users.map(u => u.id), 'u-');
 
     const newUser = {
-      id: `u-${Date.now()}`,
+      id: nextId,
       username,
       name,
       role,
@@ -248,8 +269,10 @@ async function startServer() {
     if (!name || !description) {
       return res.status(400).json({ error: 'Nombre y descripción son requeridos.' });
     }
+    const brands = await db.getBrands();
+    const nextId = getNextSequentialId(brands.map(b => b.id), 'b-');
     const newBrand = {
-      id: `b-${Date.now()}`,
+      id: nextId,
       name: name.trim(),
       description: description.trim(),
       status: status || 'Activo'
@@ -285,8 +308,10 @@ async function startServer() {
     if (!name || !description) {
       return res.status(400).json({ error: 'Nombre y descripción son requeridos.' });
     }
+    const categories = await db.getCategories();
+    const nextId = getNextSequentialId(categories.map(c => c.id), 'c-');
     const newCat = {
-      id: `c-${Date.now()}`,
+      id: nextId,
       name: name.trim(),
       description: description.trim()
     };
@@ -322,15 +347,7 @@ async function startServer() {
       return res.status(400).json({ error: 'Nombre y código Hexadecimal son requeridos.' });
     }
     const colors = await db.getColors();
-    let maxId = 0;
-    colors.forEach(col => {
-      const match = col.id.match(/^col-(\d+)$/i);
-      if (match) {
-        const val = parseInt(match[1]);
-        if (val > maxId) maxId = val;
-      }
-    });
-    const nextId = `col-${(maxId + 1).toString().padStart(2, '0')}`;
+    const nextId = getNextSequentialId(colors.map(col => col.id), 'col-');
     const newColor = {
       id: nextId,
       name: name.trim(),
@@ -414,8 +431,11 @@ async function startServer() {
       return res.status(400).json({ errors: validationErrors, error: validationErrors[0].message });
     }
 
+    const products = await db.getProducts();
+    const nextId = getNextSequentialId(products.map(p => p.id), 'p-');
+
     const newProduct = {
-      id: `p-${Date.now()}`,
+      id: nextId,
       code: req.body.code.trim(),
       gender: req.body.gender,
       categoryId: req.body.categoryId,
@@ -480,8 +500,11 @@ async function startServer() {
       return res.status(400).json({ error: 'Producto, color y talla son requeridos.' });
     }
 
+    const stockItems = await db.getStock();
+    const nextId = getNextSequentialId(stockItems.map(st => st.id), 'st-');
+
     const newStock = {
-      id: `st-${Date.now()}`,
+      id: nextId,
       productId,
       colorId,
       sizeValue: Number(sizeValue),

@@ -74,7 +74,7 @@ export default function LoginScreen({ users = INITIAL_USERS, onLoginSuccess }: L
         <div className="flex items-center gap-2.5 relative z-10" id="login-logo-tag">
           <div className="w-9 h-9 rounded-xl bg-white/5 flex items-center justify-center border border-white/15 overflow-hidden shadow-inner">
             <img 
-              src="/src/assets/images/shoeflow_logo.jpg" 
+              src="/shoeflow_logo.jpg" 
               alt="ShoeFlow Logo" 
               className="w-full h-full object-cover"
               referrerPolicy="no-referrer"

@@ -27,7 +27,11 @@ export default function BrandCrud({ brands, onAddBrand, onEditBrand, onDeleteBra
 
   const isReadOnly = userRole === 'Empleado';
 
-  const filteredBrands = brands.filter((brand) =>
+  const sortedBrands = [...brands].sort((a, b) =>
+    a.id.localeCompare(b.id, undefined, { numeric: true, sensitivity: 'base' })
+  );
+
+  const filteredBrands = sortedBrands.filter((brand) =>
     brand.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
     (brand.description && brand.description.toLowerCase().includes(searchTerm.toLowerCase()))
   );

@@ -52,7 +52,7 @@ export default function Sidebar({ isOpen, onClose, currentView, onSelectView, us
             <div className="flex items-center gap-2.5">
               <div className="w-8 h-8 rounded-lg bg-neutral-950 flex items-center justify-center border border-white/10 overflow-hidden shadow-xs">
                 <img 
-                  src="/src/assets/images/shoeflow_logo.jpg" 
+                  src="/shoeflow_logo.jpg" 
                   alt="ShoeFlow Logo" 
                   className="w-full h-full object-cover"
                   referrerPolicy="no-referrer"
