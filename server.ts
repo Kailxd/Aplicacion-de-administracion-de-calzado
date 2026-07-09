@@ -400,7 +400,22 @@ async function startServer() {
   });
 
   app.delete('/api/colors/:id', requireRoles(['Gerente', 'Administrador']), async (req, res) => {
-    const deleted = await db.deleteColor(req.params.id);
+    const colorId = req.params.id;
+
+    // Verificar integridad referencial a nivel de software
+    const products = await db.getProducts();
+    const isUsedInProducts = products.some(p => p.colors && p.colors.includes(colorId));
+    if (isUsedInProducts) {
+      return res.status(400).json({ error: 'No se puede eliminar el color porque está asignado a uno o más productos.' });
+    }
+
+    const stock = await db.getStock();
+    const isUsedInStock = stock.some(s => s.colorId === colorId);
+    if (isUsedInStock) {
+      return res.status(400).json({ error: 'No se puede eliminar el color porque tiene existencias registradas en el inventario.' });
+    }
+
+    const deleted = await db.deleteColor(colorId);
     if (!deleted) {
       return res.status(404).json({ error: 'Color no encontrado.' });
     }
@@ -472,7 +487,38 @@ async function startServer() {
   });
 
   app.delete('/api/sizes/:id', requireRoles(['Gerente', 'Administrador']), async (req, res) => {
-    const deleted = await db.deleteSize(req.params.id);
+    const sizeId = req.params.id;
+
+    const sizes = await db.getSizes();
+    const sizeObj = sizes.find(s => s.id === sizeId);
+    if (!sizeObj) {
+      return res.status(404).json({ error: 'Talla no encontrada.' });
+    }
+
+    // Verificar integridad referencial a nivel de software para tallas
+    const products = await db.getProducts();
+    const isUsedInProducts = products.some(p => {
+      const genderMatch = (sizeObj.gender === 'Dama' && p.gender === 'Mujer') ||
+                          (sizeObj.gender === 'Caballero' && p.gender === 'Hombre');
+      return genderMatch && p.sizes && p.sizes.includes(sizeObj.value);
+    });
+    if (isUsedInProducts) {
+      return res.status(400).json({ error: 'No se puede eliminar la talla porque está asignada a uno o más productos.' });
+    }
+
+    const stock = await db.getStock();
+    const isUsedInStock = stock.some(s => {
+      const prod = products.find(p => p.id === s.productId);
+      if (!prod) return false;
+      const genderMatch = (sizeObj.gender === 'Dama' && prod.gender === 'Mujer') ||
+                          (sizeObj.gender === 'Caballero' && prod.gender === 'Hombre');
+      return genderMatch && s.sizeValue === sizeObj.value;
+    });
+    if (isUsedInStock) {
+      return res.status(400).json({ error: 'No se puede eliminar la talla porque tiene existencias registradas en el inventario.' });
+    }
+
+    const deleted = await db.deleteSize(sizeId);
     if (!deleted) {
       return res.status(404).json({ error: 'Talla no encontrada.' });
     }
