@@ -99,6 +99,34 @@ async function startServer() {
     });
   });
 
+  // --- ROLE SECURITY MIDDLEWARE (OPTION B) ---
+  const requireRoles = (allowedRoles: string[]) => {
+    return async (req: express.Request, res: express.Response, next: express.NextFunction) => {
+      try {
+        const userId = req.headers['x-user-id'] as string;
+        const userRole = req.headers['x-user-role'] as string;
+
+        if (!userId || !userRole) {
+          return res.status(401).json({ error: 'Acceso denegado. Se requiere una sesión de usuario válida.' });
+        }
+
+        const user = await db.getUserById(userId);
+        if (!user || user.role !== userRole) {
+          return res.status(403).json({ error: 'Sesión inválida o credenciales de usuario modificadas.' });
+        }
+
+        if (!allowedRoles.includes(user.role)) {
+          return res.status(403).json({ error: `No tienes permisos para realizar esta acción. Se requiere rol: ${allowedRoles.join(' o ')}` });
+        }
+
+        next();
+      } catch (err) {
+        console.error('[AUTH MIDDLEWARE ERROR]', err);
+        res.status(500).json({ error: 'Error del servidor al validar los permisos.' });
+      }
+    };
+  };
+
   // Auth / Login
   app.post('/api/login', async (req, res) => {
     const { username, password } = req.body;
@@ -116,7 +144,7 @@ async function startServer() {
   });
 
   // Reset database
-  app.post('/api/reset', async (_req, res) => {
+  app.post('/api/reset', requireRoles(['Administrador']), async (_req, res) => {
     try {
       await db.resetDatabase();
       res.json({ message: 'Base de datos restablecida con éxito.' });
@@ -131,7 +159,7 @@ async function startServer() {
     res.json(users);
   });
 
-  app.post('/api/users', async (req, res) => {
+  app.post('/api/users', requireRoles(['Administrador']), async (req, res) => {
     const { username, name, role, email, password } = req.body;
     if (!username || !name || !role || !email || !password) {
       return res.status(400).json({ error: 'Todos los campos son obligatorios para crear un usuario.' });
@@ -237,6 +265,12 @@ async function startServer() {
   });
 
   app.put('/api/users/:id', async (req, res) => {
+    const requesterId = req.headers['x-user-id'] as string;
+    const requesterRole = req.headers['x-user-role'] as string;
+    if (requesterId !== req.params.id && requesterRole !== 'Administrador') {
+      return res.status(403).json({ error: 'Acceso denegado. No tienes permisos para modificar este usuario.' });
+    }
+
     if (req.body.password && req.body.password.trim()) {
       const passError = validatePassword(req.body.password.trim());
       if (passError) {
@@ -250,7 +284,7 @@ async function startServer() {
     res.json(updated);
   });
 
-  app.delete('/api/users/:id', async (req, res) => {
+  app.delete('/api/users/:id', requireRoles(['Administrador']), async (req, res) => {
     const deleted = await db.deleteUser(req.params.id);
     if (!deleted) {
       return res.status(404).json({ error: 'Usuario no encontrado.' });
@@ -264,7 +298,7 @@ async function startServer() {
     res.json(brands);
   });
 
-  app.post('/api/brands', async (req, res) => {
+  app.post('/api/brands', requireRoles(['Gerente', 'Administrador']), async (req, res) => {
     const { name, description, status } = req.body;
     if (!name || !description) {
       return res.status(400).json({ error: 'Nombre y descripción son requeridos.' });
@@ -281,7 +315,7 @@ async function startServer() {
     res.status(201).json(newBrand);
   });
 
-  app.put('/api/brands/:id', async (req, res) => {
+  app.put('/api/brands/:id', requireRoles(['Gerente', 'Administrador']), async (req, res) => {
     const updated = await db.updateBrand(req.params.id, req.body);
     if (!updated) {
       return res.status(404).json({ error: 'Marca no encontrada.' });
@@ -289,7 +323,7 @@ async function startServer() {
     res.json(updated);
   });
 
-  app.delete('/api/brands/:id', async (req, res) => {
+  app.delete('/api/brands/:id', requireRoles(['Gerente', 'Administrador']), async (req, res) => {
     const deleted = await db.deleteBrand(req.params.id);
     if (!deleted) {
       return res.status(404).json({ error: 'Marca no encontrada.' });
@@ -303,7 +337,7 @@ async function startServer() {
     res.json(categories);
   });
 
-  app.post('/api/categories', async (req, res) => {
+  app.post('/api/categories', requireRoles(['Gerente', 'Administrador']), async (req, res) => {
     const { name, description } = req.body;
     if (!name || !description) {
       return res.status(400).json({ error: 'Nombre y descripción son requeridos.' });
@@ -319,7 +353,7 @@ async function startServer() {
     res.status(201).json(newCat);
   });
 
-  app.put('/api/categories/:id', async (req, res) => {
+  app.put('/api/categories/:id', requireRoles(['Gerente', 'Administrador']), async (req, res) => {
     const updated = await db.updateCategory(req.params.id, req.body);
     if (!updated) {
       return res.status(404).json({ error: 'Categoría no encontrada.' });
@@ -327,7 +361,7 @@ async function startServer() {
     res.json(updated);
   });
 
-  app.delete('/api/categories/:id', async (req, res) => {
+  app.delete('/api/categories/:id', requireRoles(['Gerente', 'Administrador']), async (req, res) => {
     const deleted = await db.deleteCategory(req.params.id);
     if (!deleted) {
       return res.status(404).json({ error: 'Categoría no encontrada.' });
@@ -341,7 +375,7 @@ async function startServer() {
     res.json(colors);
   });
 
-  app.post('/api/colors', async (req, res) => {
+  app.post('/api/colors', requireRoles(['Gerente', 'Administrador']), async (req, res) => {
     const { name, hex } = req.body;
     if (!name || !hex) {
       return res.status(400).json({ error: 'Nombre y código Hexadecimal son requeridos.' });
@@ -357,7 +391,7 @@ async function startServer() {
     res.status(201).json(newColor);
   });
 
-  app.put('/api/colors/:id', async (req, res) => {
+  app.put('/api/colors/:id', requireRoles(['Gerente', 'Administrador']), async (req, res) => {
     const updated = await db.updateColor(req.params.id, req.body);
     if (!updated) {
       return res.status(404).json({ error: 'Color no encontrado.' });
@@ -365,7 +399,7 @@ async function startServer() {
     res.json(updated);
   });
 
-  app.delete('/api/colors/:id', async (req, res) => {
+  app.delete('/api/colors/:id', requireRoles(['Gerente', 'Administrador']), async (req, res) => {
     const deleted = await db.deleteColor(req.params.id);
     if (!deleted) {
       return res.status(404).json({ error: 'Color no encontrado.' });
@@ -379,7 +413,7 @@ async function startServer() {
     res.json(sizes);
   });
 
-  app.post('/api/sizes', async (req, res) => {
+  app.post('/api/sizes', requireRoles(['Gerente', 'Administrador']), async (req, res) => {
     const { value, gender } = req.body;
     if (value === undefined || !gender) {
       return res.status(400).json({ error: 'Valor numérico de talla y género son requeridos.' });
@@ -409,7 +443,7 @@ async function startServer() {
     res.status(201).json(newSize);
   });
 
-  app.put('/api/sizes/:id', async (req, res) => {
+  app.put('/api/sizes/:id', requireRoles(['Gerente', 'Administrador']), async (req, res) => {
     const { value, gender } = req.body;
     if (value === undefined || !gender) {
       return res.status(400).json({ error: 'Valor numérico de talla y género son requeridos.' });
@@ -437,7 +471,7 @@ async function startServer() {
     res.json(updated);
   });
 
-  app.delete('/api/sizes/:id', async (req, res) => {
+  app.delete('/api/sizes/:id', requireRoles(['Gerente', 'Administrador']), async (req, res) => {
     const deleted = await db.deleteSize(req.params.id);
     if (!deleted) {
       return res.status(404).json({ error: 'Talla no encontrada.' });
@@ -451,7 +485,7 @@ async function startServer() {
     res.json(products);
   });
 
-  app.post('/api/products', async (req, res) => {
+  app.post('/api/products', requireRoles(['Gerente', 'Administrador']), async (req, res) => {
     const validationErrors = await validateProductData(req.body);
     if (validationErrors.length > 0) {
       return res.status(400).json({ errors: validationErrors, error: validationErrors[0].message });
@@ -478,7 +512,7 @@ async function startServer() {
     res.status(201).json(newProduct);
   });
 
-  app.put('/api/products/:id', async (req, res) => {
+  app.put('/api/products/:id', requireRoles(['Gerente', 'Administrador']), async (req, res) => {
     const id = req.params.id;
     const existing = await db.getProductById(id);
     if (!existing) {
@@ -506,7 +540,7 @@ async function startServer() {
     res.json(updated);
   });
 
-  app.delete('/api/products/:id', async (req, res) => {
+  app.delete('/api/products/:id', requireRoles(['Gerente', 'Administrador']), async (req, res) => {
     const deleted = await db.deleteProduct(req.params.id);
     if (!deleted) {
       return res.status(404).json({ error: 'Producto no encontrado.' });
@@ -520,7 +554,7 @@ async function startServer() {
     res.json(stockItems);
   });
 
-  app.post('/api/stock', async (req, res) => {
+  app.post('/api/stock', requireRoles(['Gerente', 'Empleado', 'Administrador']), async (req, res) => {
     const { productId, colorId, sizeValue, quantity, stockMin, stockMax } = req.body;
     if (!productId || !colorId || sizeValue === undefined) {
       return res.status(400).json({ error: 'Producto, color y talla son requeridos.' });
@@ -543,7 +577,7 @@ async function startServer() {
     res.status(201).json(newStock);
   });
 
-  app.put('/api/stock/:id', async (req, res) => {
+  app.put('/api/stock/:id', requireRoles(['Gerente', 'Empleado', 'Administrador']), async (req, res) => {
     const updated = await db.updateStock(req.params.id, req.body);
     if (!updated) {
       return res.status(404).json({ error: 'Registro de existencias no encontrado.' });
@@ -551,7 +585,7 @@ async function startServer() {
     res.json(updated);
   });
 
-  app.delete('/api/stock/:id', async (req, res) => {
+  app.delete('/api/stock/:id', requireRoles(['Gerente', 'Empleado', 'Administrador']), async (req, res) => {
     const deleted = await db.deleteStock(req.params.id);
     if (!deleted) {
       return res.status(404).json({ error: 'Registro de existencias no encontrado.' });
