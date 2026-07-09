@@ -222,9 +222,14 @@ export default function App() {
   };
 
   // Size CRUD handlers
-  const handleAddSize = async (value: number, gender: 'Dama' | 'Caballero') => {
+  const handleAddSize = async (value: number, gender: 'Dama' | 'Caballero' | 'Ambos') => {
     try {
-      await api.createSize(value, gender);
+      if (gender === 'Ambos') {
+        await api.createSize(value, 'Dama');
+        await api.createSize(value, 'Caballero');
+      } else {
+        await api.createSize(value, gender);
+      }
       const updatedSizes = await api.getSizes();
       setSizes(updatedSizes);
     } catch (err: any) {
@@ -232,9 +237,17 @@ export default function App() {
     }
   };
 
-  const handleEditSize = async (id: string, value: number, gender: 'Dama' | 'Caballero') => {
+  const handleEditSize = async (id: string, value: number, gender: 'Dama' | 'Caballero' | 'Ambos') => {
     try {
-      await api.updateSize(id, value, gender);
+      if (gender === 'Ambos') {
+        const existingSize = sizes.find((s) => s.id === id);
+        const originalGender = existingSize ? existingSize.gender : 'Dama';
+        await api.updateSize(id, value, originalGender);
+        const otherGender = originalGender === 'Dama' ? 'Caballero' : 'Dama';
+        await api.createSize(value, otherGender);
+      } else {
+        await api.updateSize(id, value, gender);
+      }
       const updatedSizes = await api.getSizes();
       setSizes(updatedSizes);
     } catch (err: any) {

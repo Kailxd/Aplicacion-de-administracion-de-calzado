@@ -387,9 +387,22 @@ async function startServer() {
     if (gender !== 'Dama' && gender !== 'Caballero') {
       return res.status(400).json({ error: 'El género de la talla debe ser Dama o Caballero.' });
     }
+    const valNum = Number(value);
+    if (gender === 'Dama' && valNum < 22) {
+      return res.status(400).json({ error: 'El límite mínimo permitido para calzado de Dama (Mujer) es la talla 22.' });
+    }
+    if (gender === 'Dama' && valNum > 26) {
+      return res.status(400).json({ error: 'El límite máximo permitido para calzado de Dama (Mujer) es la talla 26.' });
+    }
+    if (gender === 'Caballero' && valNum < 23) {
+      return res.status(400).json({ error: 'El límite mínimo permitido para calzado de Caballero (Hombre) es la talla 23.' });
+    }
+    if (gender === 'Caballero' && valNum > 30) {
+      return res.status(400).json({ error: 'El límite máximo permitido para calzado de Caballero (Hombre) es la talla 30.' });
+    }
     const newSize = {
       id: `s-${value}-${gender.toLowerCase()}`,
-      value: Number(value),
+      value: valNum,
       gender: gender as 'Dama' | 'Caballero'
     };
     await db.createSize(newSize);
@@ -404,7 +417,20 @@ async function startServer() {
     if (gender !== 'Dama' && gender !== 'Caballero') {
       return res.status(400).json({ error: 'El género de la talla debe ser Dama o Caballero.' });
     }
-    const updated = await db.updateSize(req.params.id, { value: Number(value), gender: gender as 'Dama' | 'Caballero' });
+    const valNum = Number(value);
+    if (gender === 'Dama' && valNum < 22) {
+      return res.status(400).json({ error: 'El límite mínimo permitido para calzado de Dama (Mujer) es la talla 22.' });
+    }
+    if (gender === 'Dama' && valNum > 26) {
+      return res.status(400).json({ error: 'El límite máximo permitido para calzado de Dama (Mujer) es la talla 26.' });
+    }
+    if (gender === 'Caballero' && valNum < 23) {
+      return res.status(400).json({ error: 'El límite mínimo permitido para calzado de Caballero (Hombre) es la talla 23.' });
+    }
+    if (gender === 'Caballero' && valNum > 30) {
+      return res.status(400).json({ error: 'El límite máximo permitido para calzado de Caballero (Hombre) es la talla 30.' });
+    }
+    const updated = await db.updateSize(req.params.id, { value: valNum, gender: gender as 'Dama' | 'Caballero' });
     if (!updated) {
       return res.status(404).json({ error: 'Talla no encontrada.' });
     }
@@ -543,6 +569,7 @@ async function startServer() {
   } else {
     const distPath = path.join(process.cwd(), 'dist');
     app.use(express.static(distPath));
+    app.use(express.static(path.join(process.cwd(), 'public')));
     app.get('*', (_req, res) => {
       res.sendFile(path.join(distPath, 'index.html'));
     });

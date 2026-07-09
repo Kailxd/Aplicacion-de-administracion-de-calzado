@@ -9,8 +9,8 @@ import { Search, Plus, Edit2, Trash2, X, AlertTriangle, CheckCircle2, SlidersHor
 
 interface SizeCrudProps {
   sizes: Size[];
-  onAddSize: (value: number, gender: 'Dama' | 'Caballero') => void;
-  onEditSize: (id: string, value: number, gender: 'Dama' | 'Caballero') => void;
+  onAddSize: (value: number, gender: 'Dama' | 'Caballero' | 'Ambos') => void;
+  onEditSize: (id: string, value: number, gender: 'Dama' | 'Caballero' | 'Ambos') => void;
   onDeleteSize: (id: string) => void;
   userRole: Role;
 }
@@ -25,7 +25,7 @@ export default function SizeCrud({ sizes, onAddSize, onEditSize, onDeleteSize, u
   
   // Form values
   const [sizeValueInput, setSizeValueInput] = useState('');
-  const [sizeGenderInput, setSizeGenderInput] = useState<'Dama' | 'Caballero'>('Dama');
+  const [sizeGenderInput, setSizeGenderInput] = useState<'Dama' | 'Caballero' | 'Ambos'>('Dama');
   
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
@@ -57,6 +57,31 @@ export default function SizeCrud({ sizes, onAddSize, onEditSize, onDeleteSize, u
       return;
     }
 
+    if (sizeGenderInput === 'Dama' && val < 22) {
+      setError('El límite mínimo permitido para calzado de Dama (Mujer) es la talla 22.');
+      return;
+    }
+
+    if (sizeGenderInput === 'Dama' && val > 26) {
+      setError('El límite máximo permitido para calzado de Dama (Mujer) es la talla 26.');
+      return;
+    }
+
+    if (sizeGenderInput === 'Caballero' && val < 23) {
+      setError('El límite mínimo permitido para calzado de Caballero (Hombre) es la talla 23.');
+      return;
+    }
+
+    if (sizeGenderInput === 'Caballero' && val > 30) {
+      setError('El límite máximo permitido para calzado de Caballero (Hombre) es la talla 30.');
+      return;
+    }
+
+    if (sizeGenderInput === 'Ambos' && (val < 23 || val > 26)) {
+      setError('Para registrar en ambos géneros, la talla debe estar en el rango de 23 a 26 (permitido tanto para Dama como para Caballero).');
+      return;
+    }
+
     // Must be either an integer or half size (ends in .5)
     if ((val * 2) % 1 !== 0) {
       setError('Solo se permiten tallas enteras o medias tallas (ej. 24 o 24.5).');
@@ -64,22 +89,35 @@ export default function SizeCrud({ sizes, onAddSize, onEditSize, onDeleteSize, u
     }
 
     // Check uniqueness (ignoring the one being edited, if any)
-    const exists = sizes.some(
-      (s) => s.value === val && s.gender === sizeGenderInput && (!editingSize || s.id !== editingSize.id)
-    );
-    if (exists) {
-      setError(`La talla ${val} para ${sizeGenderInput} ya se encuentra registrada.`);
-      return;
+    if (sizeGenderInput === 'Ambos') {
+      const existsDama = sizes.some(
+        (s) => s.value === val && s.gender === 'Dama' && (!editingSize || s.id !== editingSize.id)
+      );
+      const existsCaballero = sizes.some(
+        (s) => s.value === val && s.gender === 'Caballero' && (!editingSize || s.id !== editingSize.id)
+      );
+      if (existsDama && existsCaballero) {
+        setError(`La talla ${val} ya se encuentra registrada tanto para Dama como para Caballero.`);
+        return;
+      }
+    } else {
+      const exists = sizes.some(
+        (s) => s.value === val && s.gender === sizeGenderInput && (!editingSize || s.id !== editingSize.id)
+      );
+      if (exists) {
+        setError(`La talla ${val} para ${sizeGenderInput} ya se encuentra registrada.`);
+        return;
+      }
     }
 
     if (editingSize) {
       // Modify size flow
       onEditSize(editingSize.id, val, sizeGenderInput);
-      setSuccess(`Talla ${val} (${sizeGenderInput}) modificada con éxito.`);
+      setSuccess(`Talla ${val} (${sizeGenderInput === 'Ambos' ? 'Ambos' : sizeGenderInput}) modificada con éxito.`);
     } else {
       // Add size flow
       onAddSize(val, sizeGenderInput);
-      setSuccess(`Talla ${val} (${sizeGenderInput}) agregada con éxito.`);
+      setSuccess(`Talla ${val} (${sizeGenderInput === 'Ambos' ? 'Ambos' : sizeGenderInput}) agregada con éxito.`);
     }
 
     setIsModalOpen(false);
@@ -278,11 +316,12 @@ export default function SizeCrud({ sizes, onAddSize, onEditSize, onDeleteSize, u
                 <select
                   id="size-gender-input"
                   value={sizeGenderInput}
-                  onChange={(e) => setSizeGenderInput(e.target.value as 'Dama' | 'Caballero')}
+                  onChange={(e) => setSizeGenderInput(e.target.value as 'Dama' | 'Caballero' | 'Ambos')}
                   className="block w-full px-3 py-2 border border-stone-200 rounded-xl text-xs bg-white text-stone-800 focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 transition-all"
                 >
                   <option value="Dama">Dama (Mujer)</option>
                   <option value="Caballero">Caballero (Hombre)</option>
+                  <option value="Ambos">Ambos (Dama y Caballero)</option>
                 </select>
               </div>
 

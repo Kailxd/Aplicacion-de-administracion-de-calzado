@@ -706,7 +706,12 @@ export default function ProductCrud({
                 </div>
                 <div className="grid grid-cols-4 sm:grid-cols-6 lg:grid-cols-8 gap-2 p-3.5 border border-stone-150 rounded-xl bg-stone-50/30" id="form-sizes-checkboxes">
                   {sizes
-                    .filter((s) => (gender === 'Mujer' ? s.value >= 22 && s.value <= 26 : s.value >= 23 && s.value <= 30))
+                    .filter((s) => {
+                      const belongsToGender = gender === 'Mujer' ? s.gender === 'Dama' : s.gender === 'Caballero';
+                      const inRange = gender === 'Mujer' ? s.value >= 22 && s.value <= 26 : s.value >= 23 && s.value <= 30;
+                      return belongsToGender && inRange;
+                    })
+                    .sort((a, b) => a.value - b.value)
                     .map((size) => {
                       const isSelected = selectedSizes.includes(size.value);
                       return (
