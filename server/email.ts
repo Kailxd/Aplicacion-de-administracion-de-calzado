@@ -33,12 +33,26 @@ async function getTransporter(): Promise<nodemailer.Transporter> {
   const user = process.env.SMTP_USER || process.env.EMAIL_USER || DEFAULT_SMTP_USER;
   const pass = process.env.SMTP_PASS || process.env.EMAIL_PASS || DEFAULT_SMTP_PASS;
 
+  // Use service 'gmail' directly if using Gmail for much better reliability and automated secure port/TLS handling
+  if (user && pass && (host === 'smtp.gmail.com' || user.toLowerCase().endsWith('@gmail.com'))) {
+    console.log('[EMAIL SYSTEM] Configurando transporte optimizado utilizando el servicio "gmail" de Nodemailer.');
+    cachedTransporter = nodemailer.createTransport({
+      service: 'gmail',
+      auth: { user, pass }
+    });
+    return cachedTransporter;
+  }
+
   if (host && user && pass) {
+    console.log(`[EMAIL SYSTEM] Configurando transporte SMTP personalizado: ${host}:${port}`);
     cachedTransporter = nodemailer.createTransport({
       host,
       port,
       secure: port === 465,
-      auth: { user, pass }
+      auth: { user, pass },
+      tls: {
+        rejectUnauthorized: false // Prevents failure on self-signed certificates or proxy/cloud configurations
+      }
     });
     return cachedTransporter;
   }

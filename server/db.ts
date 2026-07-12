@@ -9,6 +9,7 @@ import {
   INITIAL_USERS
 } from '../src/initialData.js';
 import { Brand, Category, Color, Size, Product, StockItem, User } from '../src/types.js';
+import { hashPassword } from './hash.js';
 
 const { Pool } = pg;
 
@@ -21,7 +22,11 @@ let usePostgres = false;
 
 // In-memory fallback database for dev preview environment when PostgreSQL server isn't running locally
 class MemoryDatabase {
-  users: User[] = [...INITIAL_USERS];
+  users: User[] = INITIAL_USERS.map(u => ({
+    ...u,
+    password: u.password && !u.password.includes(':') ? hashPassword(u.password) : u.password,
+    isVerified: true
+  }));
   brands: Brand[] = [...INITIAL_BRANDS];
   categories: Category[] = [...INITIAL_CATEGORIES];
   colors: Color[] = [...INITIAL_COLORS];
@@ -30,7 +35,11 @@ class MemoryDatabase {
   stock: StockItem[] = [...INITIAL_STOCK];
 
   reset() {
-    this.users = JSON.parse(JSON.stringify(INITIAL_USERS));
+    this.users = INITIAL_USERS.map(u => ({
+      ...u,
+      password: u.password && !u.password.includes(':') ? hashPassword(u.password) : u.password,
+      isVerified: true
+    }));
     this.brands = JSON.parse(JSON.stringify(INITIAL_BRANDS));
     this.categories = JSON.parse(JSON.stringify(INITIAL_CATEGORIES));
     this.colors = JSON.parse(JSON.stringify(INITIAL_COLORS));
@@ -130,6 +139,11 @@ export async function initDb() {
           `);
           console.log('Stock table updated to 3FN.');
         }
+
+        // 3. Ensure users table password column is VARCHAR(255)
+        await pool.query(`
+          ALTER TABLE users ALTER COLUMN password TYPE VARCHAR(255);
+        `);
       } catch (migErr) {
         console.warn('Migration status / steps executed (tables may already be clean):', (migErr as Error).message);
       }
@@ -197,10 +211,26 @@ export async function initDb() {
       if (parseInt(userCount.rows[0].count) === 0) {
         console.log('Seeding initial users into PostgreSQL...');
         for (const u of INITIAL_USERS) {
+          const rawPassword = u.password || '12345';
+          const hashedPasswordVal = rawPassword.includes(':') ? rawPassword : hashPassword(rawPassword);
           await pool.query(
-            'INSERT INTO users (id, username, name, role, email, password) VALUES ($1, $2, $3, $4, $5, $6) ON CONFLICT DO NOTHING',
-            [u.id, u.username, u.name, u.role, u.email, u.password || '12345']
+            'INSERT INTO users (id, username, name, role, email, password, is_verified) VALUES ($1, $2, $3, $4, $5, $6, $7) ON CONFLICT DO NOTHING',
+            [u.id, u.username, u.name, u.role, u.email, hashedPasswordVal, true]
           );
+        }
+      } else {
+        // Ensure initial seeded users are marked as verified so the admin/manager isn't locked out
+        await pool.query("UPDATE users SET is_verified = TRUE WHERE id IN ('u-1', 'u-2', 'u-3')");
+
+        // Automatically migrate any legacy plain-text passwords in the PostgreSQL DB to secure hashed passwords
+        const unhashedUsers = await pool.query("SELECT id, password FROM users WHERE password NOT LIKE '%:%'");
+        if (unhashedUsers.rows.length > 0) {
+          console.log(`[MIGRATION] Encriptando ${unhashedUsers.rows.length} contraseñas heredadas en texto plano...`);
+          for (const row of unhashedUsers.rows) {
+            const hp = hashPassword(row.password);
+            await pool.query('UPDATE users SET password = $1 WHERE id = $2', [hp, row.id]);
+          }
+          console.log('[MIGRATION] Todas las contraseñas heredadas han sido encriptadas con éxito.');
         }
       }
 
@@ -295,35 +325,43 @@ export async function getUserById(id: string): Promise<User | null> {
 
 export async function getUserByUsername(username: string): Promise<User | null> {
   if (usePostgres && pool) {
-    const res = await pool.query('SELECT id, username, name, role, email, password, avatar_url as "avatarUrl", is_verified as "isVerified", verification_code as "verificationCode" FROM users WHERE LOWER(username) = LOWER($1)', [username]);
+    const res = await pool.query('SELECT id, username, name, role, email, password, avatar_url as "avatarUrl", is_verified as "isVerified", verification_code as "verificationCode" FROM users WHERE LOWER(username) = LOWER($1) OR LOWER(email) = LOWER($1)', [username]);
     return res.rows[0] || null;
   }
-  return memDb.users.find(u => u.username.toLowerCase() === username.toLowerCase()) || null;
+  return memDb.users.find(u => u.username.toLowerCase() === username.toLowerCase() || u.email.toLowerCase() === username.toLowerCase()) || null;
 }
 
 export async function createUser(u: User): Promise<User> {
   const isVerified = u.isVerified !== undefined ? u.isVerified : false;
   const verificationCode = u.verificationCode || null;
+  const hashedPasswordVal = u.password && !u.password.includes(':') 
+    ? hashPassword(u.password) 
+    : u.password;
+
   if (usePostgres && pool) {
     await pool.query(
       'INSERT INTO users (id, username, name, role, email, password, avatar_url, is_verified, verification_code) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)',
-      [u.id, u.username, u.name, u.role, u.email, u.password, u.avatarUrl, isVerified, verificationCode]
+      [u.id, u.username, u.name, u.role, u.email, hashedPasswordVal, u.avatarUrl, isVerified, verificationCode]
     );
-    return { ...u, isVerified, verificationCode: verificationCode || undefined };
+    return { ...u, password: hashedPasswordVal, isVerified, verificationCode: verificationCode || undefined };
   }
-  const newUser = { ...u, isVerified, verificationCode: verificationCode || undefined };
+  const newUser = { ...u, password: hashedPasswordVal, isVerified, verificationCode: verificationCode || undefined };
   memDb.users.push(newUser);
   return newUser;
 }
 
 export async function updateUser(id: string, u: Partial<User>): Promise<User | null> {
+  const passwordToUpdate = u.password && !u.password.includes(':')
+    ? hashPassword(u.password)
+    : u.password;
+
   if (usePostgres && pool) {
     const current = await getUserById(id);
     if (!current) return null;
     const name = u.name ?? current.name;
     const role = u.role ?? current.role;
     const email = u.email ?? current.email;
-    const password = u.password ?? current.password;
+    const password = passwordToUpdate ?? current.password;
     const avatarUrl = u.avatarUrl ?? current.avatarUrl;
     const isVerified = u.isVerified ?? current.isVerified ?? false;
     const verificationCode = u.verificationCode !== undefined ? u.verificationCode : current.verificationCode;
@@ -336,7 +374,12 @@ export async function updateUser(id: string, u: Partial<User>): Promise<User | n
   }
   const index = memDb.users.findIndex(item => item.id === id);
   if (index === -1) return null;
-  memDb.users[index] = { ...memDb.users[index], ...u };
+  
+  const updatedFields = { ...u };
+  if (passwordToUpdate) {
+    updatedFields.password = passwordToUpdate;
+  }
+  memDb.users[index] = { ...memDb.users[index], ...updatedFields };
   return memDb.users[index];
 }
 

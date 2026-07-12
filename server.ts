@@ -6,6 +6,7 @@ import { createServer as createViteServer } from 'vite';
 import * as db from './server/db.js';
 import { validateProductData, validatePassword } from './server/validators.js';
 import { sendVerificationEmail } from './server/email.js';
+import { verifyPassword } from './server/hash.js';
 
 function getNextSequentialId(ids: string[], prefix: string): string {
   let maxId = 0;
@@ -135,8 +136,17 @@ async function startServer() {
     }
 
     const user = await db.getUserByUsername(username);
-    if (!user || user.password !== password) {
+    if (!user || !verifyPassword(password, user.password)) {
       return res.status(401).json({ error: 'Credenciales inválidas. Por favor verifique su usuario y contraseña.' });
+    }
+
+    if (user.isVerified === false) {
+      return res.status(403).json({
+        error: 'El correo electrónico debe ser validado (verificado) antes de poder iniciar sesión.',
+        unverified: true,
+        email: user.email,
+        userId: user.id
+      });
     }
 
     const { password: _, ...userWithoutPassword } = user;

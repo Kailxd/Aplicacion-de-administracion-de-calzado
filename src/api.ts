@@ -6,7 +6,11 @@ async function handleResponse<T>(response: Response): Promise<T> {
     if (data.errors && Array.isArray(data.errors) && data.errors.length > 0) {
       throw new Error(data.errors.map((e: any) => e.message).join(' '));
     }
-    throw new Error(data.error || `Error en la solicitud (${response.status})`);
+    const err = new Error(data.error || `Error en la solicitud (${response.status})`) as any;
+    if (data.unverified) err.unverified = data.unverified;
+    if (data.email) err.email = data.email;
+    if (data.userId) err.userId = data.userId;
+    throw err;
   }
   return data as T;
 }
