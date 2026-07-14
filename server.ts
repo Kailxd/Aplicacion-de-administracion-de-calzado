@@ -141,11 +141,29 @@ async function startServer() {
     }
 
     if (user.isVerified === false) {
+      // Automatically generate a new verification code on login attempt
+      const verificationCode = Math.floor(100000 + Math.random() * 900000).toString();
+      await db.updateUser(user.id, { verificationCode });
+
+      console.log(`[VERIFICATION EMAIL ON LOGIN] Generando nuevo código ${verificationCode} para ${user.email}`);
+
+      // Send verification email asynchronously
+      const emailResult = await sendVerificationEmail({
+        toEmail: user.email,
+        userName: user.name,
+        code: verificationCode
+      }).catch(err => {
+        console.error('[EMAIL SYSTEM ERROR ON LOGIN]', err);
+        return { success: false, error: err.message || 'Error de red SMTP' };
+      });
+
       return res.status(403).json({
         error: 'El correo electrónico debe ser validado (verificado) antes de poder iniciar sesión.',
         unverified: true,
         email: user.email,
-        userId: user.id
+        userId: user.id,
+        code: verificationCode,
+        emailError: emailResult && !emailResult.success ? emailResult.error : null
       });
     }
 
@@ -314,6 +332,12 @@ async function startServer() {
       return res.status(400).json({ error: 'Nombre y descripción son requeridos.' });
     }
     const brands = await db.getBrands();
+    const nameLower = name.trim().toLowerCase();
+    const exists = brands.some(b => b.name.toLowerCase() === nameLower);
+    if (exists) {
+      return res.status(400).json({ error: 'Este nombre de marca ya se encuentra registrado.' });
+    }
+
     const nextId = getNextSequentialId(brands.map(b => b.id), 'b-');
     const newBrand = {
       id: nextId,
@@ -326,7 +350,19 @@ async function startServer() {
   });
 
   app.put('/api/brands/:id', requireRoles(['Gerente', 'Administrador']), async (req, res) => {
-    const updated = await db.updateBrand(req.params.id, req.body);
+    const { name } = req.body;
+    const brandId = req.params.id;
+    const brands = await db.getBrands();
+
+    if (name) {
+      const nameLower = name.trim().toLowerCase();
+      const exists = brands.some(b => b.id !== brandId && b.name.toLowerCase() === nameLower);
+      if (exists) {
+        return res.status(400).json({ error: 'Este nombre de marca ya está asignado a otra marca registrada.' });
+      }
+    }
+
+    const updated = await db.updateBrand(brandId, req.body);
     if (!updated) {
       return res.status(404).json({ error: 'Marca no encontrada.' });
     }
@@ -334,7 +370,14 @@ async function startServer() {
   });
 
   app.delete('/api/brands/:id', requireRoles(['Gerente', 'Administrador']), async (req, res) => {
-    const deleted = await db.deleteBrand(req.params.id);
+    const brandId = req.params.id;
+    const products = await db.getProducts();
+    const isUsedInProducts = products.some(p => p.brandId === brandId);
+    if (isUsedInProducts) {
+      return res.status(400).json({ error: 'No se puede eliminar la marca porque está asignada a uno o más productos.' });
+    }
+
+    const deleted = await db.deleteBrand(brandId);
     if (!deleted) {
       return res.status(404).json({ error: 'Marca no encontrada.' });
     }
@@ -353,6 +396,12 @@ async function startServer() {
       return res.status(400).json({ error: 'Nombre y descripción son requeridos.' });
     }
     const categories = await db.getCategories();
+    const nameLower = name.trim().toLowerCase();
+    const exists = categories.some(c => c.name.toLowerCase() === nameLower);
+    if (exists) {
+      return res.status(400).json({ error: 'Este nombre de categoría ya se encuentra registrado.' });
+    }
+
     const nextId = getNextSequentialId(categories.map(c => c.id), 'c-');
     const newCat = {
       id: nextId,
@@ -364,7 +413,19 @@ async function startServer() {
   });
 
   app.put('/api/categories/:id', requireRoles(['Gerente', 'Administrador']), async (req, res) => {
-    const updated = await db.updateCategory(req.params.id, req.body);
+    const { name } = req.body;
+    const categoryId = req.params.id;
+    const categories = await db.getCategories();
+
+    if (name) {
+      const nameLower = name.trim().toLowerCase();
+      const exists = categories.some(c => c.id !== categoryId && c.name.toLowerCase() === nameLower);
+      if (exists) {
+        return res.status(400).json({ error: 'Este nombre de categoría ya está asignado a otra categoría registrada.' });
+      }
+    }
+
+    const updated = await db.updateCategory(categoryId, req.body);
     if (!updated) {
       return res.status(404).json({ error: 'Categoría no encontrada.' });
     }
@@ -372,7 +433,14 @@ async function startServer() {
   });
 
   app.delete('/api/categories/:id', requireRoles(['Gerente', 'Administrador']), async (req, res) => {
-    const deleted = await db.deleteCategory(req.params.id);
+    const categoryId = req.params.id;
+    const products = await db.getProducts();
+    const isUsedInProducts = products.some(p => p.categoryId === categoryId);
+    if (isUsedInProducts) {
+      return res.status(400).json({ error: 'No se puede eliminar la categoría porque está asignada a uno o más productos.' });
+    }
+
+    const deleted = await db.deleteCategory(categoryId);
     if (!deleted) {
       return res.status(404).json({ error: 'Categoría no encontrada.' });
     }
@@ -391,6 +459,20 @@ async function startServer() {
       return res.status(400).json({ error: 'Nombre y código Hexadecimal son requeridos.' });
     }
     const colors = await db.getColors();
+
+    const nameLower = name.trim().toLowerCase();
+    const hexLower = hex.trim().toLowerCase();
+
+    const existsName = colors.some(col => col.name.toLowerCase() === nameLower);
+    if (existsName) {
+      return res.status(400).json({ error: 'Este nombre de color ya se encuentra registrado.' });
+    }
+
+    const existsHex = colors.some(col => col.hex.toLowerCase() === hexLower);
+    if (existsHex) {
+      return res.status(400).json({ error: 'Este código hexadecimal ya se encuentra registrado con otro color.' });
+    }
+
     const nextId = getNextSequentialId(colors.map(col => col.id), 'col-');
     const newColor = {
       id: nextId,
@@ -402,7 +484,27 @@ async function startServer() {
   });
 
   app.put('/api/colors/:id', requireRoles(['Gerente', 'Administrador']), async (req, res) => {
-    const updated = await db.updateColor(req.params.id, req.body);
+    const { name, hex } = req.body;
+    const colorId = req.params.id;
+    const colors = await db.getColors();
+
+    if (name) {
+      const nameLower = name.trim().toLowerCase();
+      const existsName = colors.some(col => col.id !== colorId && col.name.toLowerCase() === nameLower);
+      if (existsName) {
+        return res.status(400).json({ error: 'Este nombre de color ya está asignado a otro color registrado.' });
+      }
+    }
+
+    if (hex) {
+      const hexLower = hex.trim().toLowerCase();
+      const existsHex = colors.some(col => col.id !== colorId && col.hex.toLowerCase() === hexLower);
+      if (existsHex) {
+        return res.status(400).json({ error: 'Este código hexadecimal ya está asignado a otro color registrado.' });
+      }
+    }
+
+    const updated = await db.updateColor(colorId, req.body);
     if (!updated) {
       return res.status(404).json({ error: 'Color no encontrado.' });
     }

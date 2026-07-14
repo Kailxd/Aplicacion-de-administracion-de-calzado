@@ -10,7 +10,7 @@ import { api } from '../api';
 
 interface UserCrudProps {
   users: User[];
-  onAddUser: (username: string, name: string, role: Role, email: string, password: string) => void;
+  onAddUser: (username: string, name: string, role: Role, email: string, password: string) => Promise<User | undefined>;
   onEditUser: (id: string, name: string, role: Role, email: string, password?: string) => void;
   onDeleteUser: (id: string) => void;
   currentUser: User;
@@ -80,7 +80,7 @@ export default function UserCrud({ users, onAddUser, onEditUser, onDeleteUser, c
     }
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
     setSuccess('');
@@ -154,8 +154,12 @@ export default function UserCrud({ users, onAddUser, onEditUser, onDeleteUser, c
         return;
       }
 
-      onAddUser(username.trim().toLowerCase(), name.trim(), role, email.trim().toLowerCase(), password.trim());
-      setSuccess('Empleado registrado con éxito.');
+      const newUser = await onAddUser(username.trim().toLowerCase(), name.trim(), role, email.trim().toLowerCase(), password.trim());
+      if (newUser && newUser.verificationCode) {
+        setSuccess(`Empleado registrado con éxito. CÓDIGO DE VERIFICACIÓN: ${newUser.verificationCode} (Compártelo con el empleado)`);
+      } else {
+        setSuccess('Empleado registrado con éxito.');
+      }
     } else {
       if (password.trim()) {
         const p = password.trim();
@@ -187,7 +191,8 @@ export default function UserCrud({ users, onAddUser, onEditUser, onDeleteUser, c
 
     setIsModalOpen(false);
     resetForm();
-    setTimeout(() => setSuccess(''), 3000);
+    // Use longer timeout if there's a verification code so it's not hidden too quickly
+    setTimeout(() => setSuccess(''), 15000);
   };
 
   const resetForm = () => {

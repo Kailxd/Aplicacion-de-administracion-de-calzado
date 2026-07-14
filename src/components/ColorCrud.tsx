@@ -70,12 +70,21 @@ export default function ColorCrud({ colors, onAddColor, onEditColor, onDeleteCol
       }
     }
 
-    const exists = colors.some(
+    const existsName = colors.some(
       (c) => c.name.toLowerCase() === cleanColorName.toLowerCase() && (!editingColor || c.id !== editingColor.id)
     );
 
-    if (exists) {
+    if (existsName) {
       setError('Este color ya se encuentra registrado con ese nombre.');
+      return;
+    }
+
+    const existsHex = colors.some(
+      (c) => c.hex.toLowerCase() === cleanColorHex.toLowerCase() && (!editingColor || c.id !== editingColor.id)
+    );
+
+    if (existsHex) {
+      setError('Este código hexadecimal ya se encuentra registrado con otro color.');
       return;
     }
 

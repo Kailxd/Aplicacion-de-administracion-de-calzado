@@ -4,18 +4,19 @@
  */
 
 import React, { useState } from 'react';
-import { Category, Role } from '../types';
+import { Category, Role, Product } from '../types';
 import { Search, Plus, Edit2, Trash2, X, AlertTriangle, CheckCircle2 } from 'lucide-react';
 
 interface CategoryCrudProps {
   categories: Category[];
+  products: Product[];
   onAddCategory: (name: string, description: string) => void;
   onEditCategory: (id: string, name: string, description: string) => void;
   onDeleteCategory: (id: string) => void;
   userRole: Role;
 }
 
-export default function CategoryCrud({ categories, onAddCategory, onEditCategory, onDeleteCategory, userRole }: CategoryCrudProps) {
+export default function CategoryCrud({ categories, products, onAddCategory, onEditCategory, onDeleteCategory, userRole }: CategoryCrudProps) {
   const [searchTerm, setSearchTerm] = useState('');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingCategory, setEditingCategory] = useState<Category | null>(null);
@@ -107,7 +108,16 @@ export default function CategoryCrud({ categories, onAddCategory, onEditCategory
   };
 
   const handleDelete = (id: string) => {
-    if (window.confirm('¿Estás seguro de eliminar esta categoría?')) {
+    const category = categories.find((c) => c.id === id);
+    const catNameStr = category ? category.name : '';
+    const isAssociated = products.some((p) => p.categoryId === id);
+
+    if (isAssociated) {
+      alert(`No se puede eliminar la categoría "${catNameStr}" porque está asociada a uno o más productos del catálogo.`);
+      return;
+    }
+
+    if (window.confirm(`¿Estás seguro de eliminar la categoría "${catNameStr}"?`)) {
       onDeleteCategory(id);
       setSuccess('Categoría eliminada con éxito.');
       setTimeout(() => setSuccess(''), 3000);

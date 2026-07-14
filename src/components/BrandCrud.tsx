@@ -4,18 +4,19 @@
  */
 
 import React, { useState } from 'react';
-import { Brand, Role } from '../types';
+import { Brand, Role, Product } from '../types';
 import { Search, Plus, Edit2, Trash2, X, AlertTriangle, CheckCircle2 } from 'lucide-react';
 
 interface BrandCrudProps {
   brands: Brand[];
+  products: Product[];
   onAddBrand: (name: string, description: string, status: 'Activo' | 'Inactivo') => void;
   onEditBrand: (id: string, name: string, description: string, status: 'Activo' | 'Inactivo') => void;
   onDeleteBrand: (id: string) => void;
   userRole: Role;
 }
 
-export default function BrandCrud({ brands, onAddBrand, onEditBrand, onDeleteBrand, userRole }: BrandCrudProps) {
+export default function BrandCrud({ brands, products, onAddBrand, onEditBrand, onDeleteBrand, userRole }: BrandCrudProps) {
   const [searchTerm, setSearchTerm] = useState('');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingBrand, setEditingBrand] = useState<Brand | null>(null);
@@ -111,7 +112,16 @@ export default function BrandCrud({ brands, onAddBrand, onEditBrand, onDeleteBra
   };
 
   const handleDelete = (id: string) => {
-    if (window.confirm('¿Estás seguro de eliminar esta marca?')) {
+    const brand = brands.find((b) => b.id === id);
+    const brandNameStr = brand ? brand.name : '';
+    const isAssociated = products.some((p) => p.brandId === id);
+
+    if (isAssociated) {
+      alert(`No se puede eliminar la marca "${brandNameStr}" porque está asociada a uno o más productos del catálogo.`);
+      return;
+    }
+
+    if (window.confirm(`¿Estás seguro de eliminar la marca "${brandNameStr}"?`)) {
       onDeleteBrand(id);
       setSuccess('Marca eliminada con éxito.');
       setTimeout(() => setSuccess(''), 3000);

@@ -336,13 +336,15 @@ export default function App() {
   };
 
   // User Management Handlers (Administrador)
-  const handleAddUser = async (uName: string, fullName: string, uRole: Role, uEmail: string, uPass: string) => {
+  const handleAddUser = async (uName: string, fullName: string, uRole: Role, uEmail: string, uPass: string): Promise<User | undefined> => {
     try {
-      await api.createUser({ username: uName, name: fullName, role: uRole, email: uEmail, password: uPass });
+      const newUser = await api.createUser({ username: uName, name: fullName, role: uRole, email: uEmail, password: uPass });
       const updatedUsers = await api.getUsers();
       setUsers(updatedUsers);
+      return newUser;
     } catch (err: any) {
       alert(err.message || 'Error al agregar usuario');
+      return undefined;
     }
   };
 
@@ -437,6 +439,7 @@ export default function App() {
         return (
           <CategoryCrud
             categories={categories}
+            products={products}
             onAddCategory={handleAddCategory}
             onEditCategory={handleEditCategory}
             onDeleteCategory={handleDeleteCategory}
@@ -467,6 +470,7 @@ export default function App() {
         return (
           <BrandCrud
             brands={brands}
+            products={products}
             onAddBrand={handleAddBrand}
             onEditBrand={handleEditBrand}
             onDeleteBrand={handleDeleteBrand}
